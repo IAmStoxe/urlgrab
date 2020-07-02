@@ -25,10 +25,12 @@ func main() {
 		useRandomAgent bool
 		randomDelay    int64
 		threadCount    int
+		ignoreQuery    bool
 	)
 	flag.StringVar(&startUrl, "url", "", "The URL where we should start crawling.")
 	flag.IntVar(&depth, "depth", 100, "The  maximum depth to crawl.")
 	flag.Int64Var(&randomDelay, "delay", 2000, "Milliseconds to randomly apply as a delay between requests.")
+	flag.BoolVar(&ignoreQuery, "ignore-query", false, "Strip the query portion of the URL before determining if we've visited it yet.")
 	flag.BoolVar(&useRandomAgent, "random-agent", false, "Utilize a random user agent string.")
 	flag.IntVar(&threadCount, "threads", 5, "The number of threads to utilize.")
 
@@ -83,32 +85,34 @@ func main() {
 		// Strip the query portion of the URL and remove trailing slash
 		var u, _ = url.Parse(absoluteURL)
 
-		var strippedUrl = fmt.Sprintf("%s://%s%s", u.Scheme, u.Host, u.Path)
-		strippedUrl = strings.TrimRight(strippedUrl, "/")
-
 		if !strings.Contains(u.Scheme, "http") {
 			return
 		}
 
-		// Skip if we have this one
-		if arrayContains(foundUrls, strippedUrl) {
-			return
-		}
+		if ignoreQuery {
+			// Ignoring the query portion on the query. Stripping it from the URL
+			var strippedUrl = fmt.Sprintf("%s://%s%s", u.Scheme, u.Host, u.Path)
+			strippedUrl = strings.TrimRight(strippedUrl, "/")
 
-		foundUrls = append(foundUrls, strippedUrl)
+			// Add only if we do not have it already
+			if !arrayContains(foundUrls, strippedUrl) {
+				foundUrls = append(foundUrls, absoluteURL)
+			}
+
+		} else {
+			// Add only if we do not have it already
+			if !arrayContains(foundUrls, absoluteURL) {
+				foundUrls = append(foundUrls, absoluteURL)
+			}
+
+		}
 
 		collector.Visit(absoluteURL)
 
 	})
 
 	collector.OnScraped(func(r *colly.Response) {
-
-		// Strip the query portion of the URL and remove trailing slash
-		u := r.Request.URL
-		var strippedUrl = fmt.Sprintf("%s://%s%s", u.Scheme, u.Host, u.Path)
-		strippedUrl = strings.TrimRight(strippedUrl, "/")
-
-		scrapedUrls = append(scrapedUrls, strippedUrl)
+		scrapedUrls = append(scrapedUrls, r.Request.URL.String())
 	})
 
 	// Before making a request print "Visiting ..."
