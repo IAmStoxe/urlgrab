@@ -18,10 +18,11 @@ go get -u github.com/iamstoxe/urlgrab
 ## Usage
 
 ```bash
-urlgrab --url=https://httpbin.org \
-        --depth=3 \
-        --threads=10 \
-        --delay=2000
+urlgrab --url=https://httpbin.org/links/200/0 \
+        --depth=3 \ # Go 3 levels deep
+        --threads=10 \ # Utilize 10 threads
+        --delay=2000 \ # Randomly apply a 2000ms delay
+        --random-agent # Utilize a random user-agent
 ```
 
 ###### Note
