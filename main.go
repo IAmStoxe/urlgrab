@@ -96,18 +96,18 @@ func main() {
 
 			// Add only if we do not have it already
 			if !arrayContains(foundUrls, strippedUrl) {
-				foundUrls = append(foundUrls, absoluteURL)
+				foundUrls = append(foundUrls, strippedUrl)
+				collector.Visit(strippedUrl)
 			}
 
 		} else {
 			// Add only if we do not have it already
 			if !arrayContains(foundUrls, absoluteURL) {
 				foundUrls = append(foundUrls, absoluteURL)
+				collector.Visit(absoluteURL)
 			}
 
 		}
-
-		collector.Visit(absoluteURL)
 
 	})
 
