@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/gocolly/colly/v2"
-	"github.com/gocolly/colly/v2/debug"
 	"github.com/gocolly/colly/v2/extensions"
 	"github.com/mpvl/unique"
 	"net/url"
@@ -21,16 +20,17 @@ func main() {
 
 	// Params
 	var (
-		dbg            bool
+		depth          int
 		startUrl       string
 		useRandomAgent bool
 		randomDelay    int64
+		threadCount    int
 	)
-
 	flag.StringVar(&startUrl, "url", "", "The URL where we should start crawling.")
+	flag.IntVar(&depth, "depth", 100, "The  maximum depth to crawl.")
 	flag.Int64Var(&randomDelay, "delay", 2000, "Milliseconds to randomly apply as a delay between requests.")
 	flag.BoolVar(&useRandomAgent, "random-agent", false, "Utilize a random user agent string.")
-	flag.BoolVar(&dbg, "debug", false, "Turn on debug messaging from underlying colly module.")
+	flag.IntVar(&threadCount, "threads", 5, "The number of threads to utilize.")
 
 	flag.Parse()
 
@@ -48,29 +48,24 @@ func main() {
 	// Handle collector instantiation with option debugging.
 	var collector *colly.Collector = nil
 
+	// http or s
+	// subdomain or not
+	// domain name
+	// path or not
 	regexPattern := fmt.Sprintf("(http|s).*?\\.?%s(|/.*)", parsedUrl.Host)
 	fmt.Printf("Regex: %s\n", regexPattern)
 
-	if dbg == true {
-		collector = colly.NewCollector(
-			colly.Async(true),
-			// Attach a debugger to the collector
-			colly.Debugger(&debug.LogDebugger{}),
-			colly.URLFilters(regexp.MustCompile(regexPattern)),
-		)
-	} else {
-		collector = colly.NewCollector(
-			colly.Async(true),
-			colly.URLFilters(regexp.MustCompile(regexPattern)),
-		)
-	}
+	collector = colly.NewCollector(
+		colly.Async(true),
+		colly.MaxDepth(depth),
+		colly.URLFilters(regexp.MustCompile(regexPattern)),
+	)
 
 	splitHost := strings.Split(parsedUrl.Host, ".")
 	rootDomainNameWithoutTld := splitHost[len(splitHost)-2]
-
 	collector.Limit(&colly.LimitRule{
 		DomainGlob:  fmt.Sprintf("*%s.*", rootDomainNameWithoutTld),
-		Parallelism: 25,
+		Parallelism: threadCount,
 		RandomDelay: time.Duration(randomDelay) * time.Millisecond,
 	})
 
@@ -92,6 +87,11 @@ func main() {
 		strippedUrl = strings.TrimRight(strippedUrl, "/")
 
 		if !strings.Contains(u.Scheme, "http") {
+			return
+		}
+
+		// Skip if we have this one
+		if arrayContains(foundUrls, strippedUrl) {
 			return
 		}
 
@@ -117,27 +117,33 @@ func main() {
 	})
 
 	collector.OnError(func(response *colly.Response, err error) {
-		if err.Error() == "Not Found" {
+		switch err.Error() {
+		case "Not Found":
 			fmt.Printf("Not Found: %s\n", response.Request.URL)
-			// 404
-			return
+		case "Too Many Requests":
+			fmt.Println("Too Many Requests - Consider lowering threads and/or increasing delay.")
+		default:
+			fmt.Errorf("ERROR - %s\n", err.Error())
 		}
-		fmt.Printf("ERROR: %s\n", err.Error())
 	})
 
 	// Start scraping on our start URL
 	collector.Visit(startUrl)
 	collector.Wait()
 
-	fmt.Printf("Total scaped URLs: %v\n", len(foundUrls))
-	var uniqueUrls = foundUrls
+	fmt.Printf("Total found URLs: %v\n", len(foundUrls))
 
-	unique.Sort(unique.StringSlice{P: &uniqueUrls})
-	unique.Unique(unique.StringSlice{P: &uniqueUrls})
-	fmt.Printf("Total scaped URLs after Unique: %v\n", len(uniqueUrls))
+	var uniqueFoundUrls = foundUrls
+	unique.Sort(unique.StringSlice{P: &uniqueFoundUrls})
+	unique.Unique(unique.StringSlice{P: &uniqueFoundUrls})
+	writeOutput("./unique_found.txt", uniqueFoundUrls)
+	fmt.Printf("Total unique found URLs: %v\n", len(uniqueFoundUrls))
 
-	writeOutput("./unique.txt", uniqueUrls)
-	//writeOutput("./all.txt", foundUrls)
+	var uniqueScrapedUrls = scrapedUrls
+	unique.Sort(unique.StringSlice{P: &uniqueScrapedUrls})
+	unique.Unique(unique.StringSlice{P: &uniqueScrapedUrls})
+
+	writeOutput("./unique_scraped.txt", uniqueScrapedUrls)
 
 }
 
@@ -161,4 +167,13 @@ func writeOutput(outputPath string, data []string) {
 		fmt.Println(err)
 		return
 	}
+}
+
+func arrayContains(arr []string, str string) bool {
+	for _, a := range arr {
+		if a == str {
+			return true
+		}
+	}
+	return false
 }
