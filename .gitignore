@@ -17,3 +17,5 @@
 # vendor/
 
 /.idea/
+unique_found.txt
+unique_scraped.txt
