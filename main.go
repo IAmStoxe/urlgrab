@@ -96,7 +96,7 @@ func main() {
 
 			// Add only if we do not have it already
 			if !arrayContains(foundUrls, strippedUrl) {
-				foundUrls = append(foundUrls, absoluteURL)
+				foundUrls = append(foundUrls, strippedUrl)
 			}
 
 		} else {
