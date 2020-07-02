@@ -22,6 +22,7 @@ urlgrab --url=https://httpbin.org/links/200/0 \
         --depth=3 \ # Go 3 levels deep
         --threads=10 \ # Utilize 10 threads
         --delay=2000 \ # Randomly apply a 2000ms delay
+        --ignore-query \ # Ignore the query portion of urls
         --random-agent # Utilize a random user-agent
 ```
 
