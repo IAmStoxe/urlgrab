@@ -36,7 +36,7 @@ urlgrab --url=https://httpbin.org/links/200/0 \
 ```
 
 ###### Note
-urlgrab will only visit links that at either the same domain as the specified starting url or a subdomain of the starting url.
+urlgrab will only visits links that either share same domain as the specified starting url or are a subdomain of the starting url.
 
 
 ## Contributing
