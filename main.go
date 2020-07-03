@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"github.com/gocolly/colly/v2"
 	"github.com/gocolly/colly/v2/extensions"
+	"github.com/gocolly/colly/v2/proxy"
 	"github.com/mpvl/unique"
+	"log"
 	"net/url"
 	"os"
 	"regexp"
@@ -16,12 +18,14 @@ import (
 func main() {
 
 	var foundUrls []string
-	var scrapedUrls []string
+	var visitedUrls []string
 
 	// Params
 	var (
 		depth          int
 		startUrl       string
+		socks5Proxy    string
+		outputPath     string
 		useRandomAgent bool
 		randomDelay    int64
 		threadCount    int
@@ -31,6 +35,8 @@ func main() {
 	flag.IntVar(&depth, "depth", 100, "The  maximum depth to crawl.")
 	flag.Int64Var(&randomDelay, "delay", 2000, "Milliseconds to randomly apply as a delay between requests.")
 	flag.BoolVar(&ignoreQuery, "ignore-query", false, "Strip the query portion of the URL before determining if we've visited it yet.")
+	flag.StringVar(&socks5Proxy, "socks", "", "The SOCKS5 proxy to utilize (format 127.0.0.1:8080).")
+	flag.StringVar(&outputPath, "output", "", "The directory where we should store the output files.")
 	flag.BoolVar(&useRandomAgent, "random-agent", false, "Utilize a random user agent string.")
 	flag.IntVar(&threadCount, "threads", 5, "The number of threads to utilize.")
 
@@ -44,8 +50,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Instantiate default collector
-	fmt.Printf("Domains: %v\n", parsedUrl.Host)
+	fmt.Printf("Domain: %v\n", parsedUrl.Host)
 
 	// Handle collector instantiation with option debugging.
 	var collector *colly.Collector = nil
@@ -63,6 +68,16 @@ func main() {
 		colly.URLFilters(regexp.MustCompile(regexPattern)),
 	)
 
+	// Setup proxy if supplied
+	if socks5Proxy != "" {
+		// Rotate two socks5Proxy proxies
+		rp, err := proxy.RoundRobinProxySwitcher(fmt.Sprintf("socks5://%s", socks5Proxy))
+		if err != nil {
+			log.Fatal(err)
+		}
+		collector.SetProxyFunc(rp)
+	}
+
 	splitHost := strings.Split(parsedUrl.Host, ".")
 	rootDomainNameWithoutTld := splitHost[len(splitHost)-2]
 	collector.Limit(&colly.LimitRule{
@@ -71,6 +86,7 @@ func main() {
 		RandomDelay: time.Duration(randomDelay) * time.Millisecond,
 	})
 
+	// Use random user-agent if requested
 	if useRandomAgent {
 		extensions.RandomUserAgent(collector)
 	}
@@ -111,8 +127,9 @@ func main() {
 
 	})
 
+	// These are the pages that were visited completely.
 	collector.OnScraped(func(r *colly.Response) {
-		scrapedUrls = append(scrapedUrls, r.Request.URL.String())
+		visitedUrls = append(visitedUrls, r.Request.URL.String())
 	})
 
 	// Before making a request print "Visiting ..."
@@ -131,23 +148,40 @@ func main() {
 		}
 	})
 
+	// If outputting files, verify the directory exists:
+	if outputPath != "" {
+		if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+			log.Fatal(err)
+			os.Exit(1)
+		}
+	}
+
 	// Start scraping on our start URL
 	collector.Visit(startUrl)
 	collector.Wait()
 
-	fmt.Printf("Total found URLs: %v\n", len(foundUrls))
-
 	var uniqueFoundUrls = foundUrls
+	var uniqueVisitedUrls = visitedUrls
+
+	// Sort and removes duplicate entries
 	unique.Sort(unique.StringSlice{P: &uniqueFoundUrls})
-	unique.Unique(unique.StringSlice{P: &uniqueFoundUrls})
-	writeOutput("./unique_found.txt", uniqueFoundUrls)
-	fmt.Printf("Total unique found URLs: %v\n", len(uniqueFoundUrls))
+	unique.Sort(unique.StringSlice{P: &uniqueVisitedUrls})
 
-	var uniqueScrapedUrls = scrapedUrls
-	unique.Sort(unique.StringSlice{P: &uniqueScrapedUrls})
-	unique.Unique(unique.StringSlice{P: &uniqueScrapedUrls})
+	fmt.Printf("[~] Total found URLs: %v\n", len(foundUrls))
+	fmt.Printf("[~] Unique found URLs: %v\n", len(uniqueFoundUrls))
+	fmt.Printf("[~] Total visited URLs: %v\n", len(visitedUrls))
+	fmt.Printf("[~] Unique visited URLs: %v\n", len(visitedUrls))
 
-	writeOutput("./unique_scraped.txt", uniqueScrapedUrls)
+	// If and output path is specified, save the file in that directory.
+	if outputPath != "" {
+		path := fmt.Sprintf("%s/unique_visited.txt", outputPath)
+		writeOutput(path, uniqueVisitedUrls)
+	} else {
+		fmt.Println("Found URLs: ")
+		for i := 0; i < len(uniqueVisitedUrls); i++ {
+			fmt.Printf("[+] %s\n", uniqueFoundUrls[i])
+		}
+	}
 
 }
 
