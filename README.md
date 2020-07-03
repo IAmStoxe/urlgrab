@@ -25,6 +25,10 @@ urlgrab --url=https://httpbin.org/links/200/0 \
         --threads=10 \ 
          # Randomly apply a 2000ms delay \
         --delay=2000 \
+        # Output to the specified directory \
+        --output=/home/myuser
+        # Utilize a SOCKS5 proxy
+        --socks=127.0.0.1:8080
         # Ignore the query portion of urls \
         --ignore-query \ 
          # Utilize a random user-agent        
