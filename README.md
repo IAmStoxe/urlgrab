@@ -27,7 +27,7 @@ urlgrab --url=https://httpbin.org/links/200/0 \
         --delay=2000 \
         # Output to the specified directory \
         --output=/home/myuser
-        # Utilize a SOCKS5 proxy
+        # Utilize a SOCKS5 proxy \
         --proxy=http://127.0.0.1:8080
         # Ignore the query portion of urls \
         --ignore-query \ 
