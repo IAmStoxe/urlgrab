@@ -133,6 +133,9 @@ func main() {
 			urlToVisit = absoluteURL
 		}
 
+		// Trim the trailing slash
+		urlToVisit = strings.TrimRight(urlToVisit, "/")
+
 		// Add only if we do not have it already
 		if !arrayContains(foundUrls, urlToVisit) {
 			foundUrls = append(foundUrls, urlToVisit)
@@ -160,10 +163,14 @@ func main() {
 			urlToVisit = absoluteURL
 		}
 
+		// Trim the trailing slash
+		urlToVisit = strings.TrimRight(urlToVisit, "/")
+
 		// Add only if we do not have it already
 		if !arrayContains(foundUrls, urlToVisit) {
 			foundUrls = append(foundUrls, urlToVisit)
 			// Pass it to the JS collector
+
 			jsCollector.Visit(urlToVisit)
 		}
 
@@ -187,6 +194,9 @@ func main() {
 			absoluteURL := r.Request.AbsoluteURL(u)
 
 			//fmt.Printf("[JS Parser] Parsed Link #%v: %s\n", i, absoluteURL)
+
+			// Trim the trailing slash
+			absoluteURL = strings.TrimRight(absoluteURL, "/")
 
 			// We submit all links we find and the collector will handle the parsing based on our URL filter
 			jsCollector.Visit(absoluteURL)
