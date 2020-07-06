@@ -7,7 +7,7 @@ import (
 	"github.com/gocolly/colly/v2/extensions"
 	"github.com/gocolly/colly/v2/proxy"
 	"github.com/mpvl/unique"
-	"log"
+	"github.com/op/go-logging"
 	"net/url"
 	"os"
 	"regexp"
@@ -30,6 +30,7 @@ func main() {
 		randomDelay    int64
 		threadCount    int
 		ignoreQuery    bool
+		verbose        bool
 	)
 	flag.StringVar(&startUrl, "url", "", "The URL where we should start crawling.")
 	flag.IntVar(&depth, "depth", 100, "The  maximum depth to crawl.")
@@ -39,18 +40,43 @@ func main() {
 	flag.StringVar(&outputPath, "output", "", "The directory where we should store the output files.")
 	flag.BoolVar(&useRandomAgent, "random-agent", false, "Utilize a random user agent string.")
 	flag.IntVar(&threadCount, "threads", 5, "The number of threads to utilize.")
+	flag.BoolVar(&verbose, "verbose", false, "Verbose output")
 
 	flag.Parse()
+
+	// Setup the logging instance
+	var log = logging.MustGetLogger("urlgrab")
+	var format = logging.MustStringFormatter(
+		`%{color}%{shortfunc} ▶ %{level:.5s}%{color:reset} %{message}`,
+	)
+	// Create backend for os.Stderr.
+	loggingBackend1 := logging.NewLogBackend(os.Stderr, "", 0)
+
+	// For messages written to loggingBackend1 we want to add some additional
+	// information to the output, including the used log level and the name of
+	// the function.
+	backend1Formatter := logging.NewBackendFormatter(loggingBackend1, format)
+
+	// Only errors and more severe messages should be sent to backend1
+	backend1Leveled := logging.AddModuleLevel(loggingBackend1)
+	logging.SetLevel(logging.ERROR, "urlgrab")
+
+	if verbose == true {
+		backend1Leveled.SetLevel(logging.DEBUG, "")
+	}
+
+	// Set the backends to be used.
+	logging.SetBackend(backend1Leveled, backend1Formatter)
 
 	// Validate the user passed URL
 	parsedUrl, err := url.Parse(startUrl)
 
 	if err != nil {
-		fmt.Errorf("Error parsing URL: %s\n", startUrl)
+		log.Errorf("Error parsing URL: %s", startUrl)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Domain: %v\n", parsedUrl.Host)
+	log.Infof("Domain: %v\n", parsedUrl.Host)
 
 	// Handle pageCollector instantiation with option debugging.
 	var pageCollector *colly.Collector = nil
@@ -61,8 +87,8 @@ func main() {
 	// domain name
 	// path or not
 	pageRegexPattern := fmt.Sprintf("(http|s).*?\\.?%s(|/.*)", parsedUrl.Host)
-	jsRegexPattern := fmt.Sprintf("(http|s).*?\\.?%s(|/.*\\.js)", parsedUrl.Host)
-	fmt.Printf("Regex: %s\n", pageRegexPattern)
+	jsRegexPattern := fmt.Sprintf("(http|s).*?\\.?%s(/.*\\.js)", parsedUrl.Host)
+	log.Debugf("Regex: %s\n", pageRegexPattern)
 
 	pageCollector = colly.NewCollector(
 		colly.Async(true),
@@ -199,10 +225,11 @@ func main() {
 			absoluteURL = strings.TrimRight(absoluteURL, "/")
 
 			// We submit all links we find and the collector will handle the parsing based on our URL filter
-			jsCollector.Visit(absoluteURL)
+			// We submit them back to the main collector
+			pageCollector.Visit(absoluteURL)
 		}
 
-		fmt.Printf("[JS Parser] Parsed %v urls from %s\n", len(regexLinks), r.Request.URL.String())
+		log.Debugf("[JS Parser] Parsed %v urls from %s", len(regexLinks), r.Request.URL.String())
 
 	})
 
@@ -210,7 +237,7 @@ func main() {
 	pageCollector.OnScraped(func(r *colly.Response) {
 		// Scraped a page
 
-		// Trim trailing URL
+		// Trim trailing slash in the URL
 		u := strings.TrimRight(r.Request.URL.String(), "/")
 		visitedUrls = append(visitedUrls, u)
 	})
@@ -218,40 +245,41 @@ func main() {
 	jsCollector.OnScraped(func(r *colly.Response) {
 		// Scraped a JS URL
 
+		// Trim trailing slash in the URL
 		u := strings.TrimRight(r.Request.URL.String(), "/")
 		visitedUrls = append(visitedUrls, u)
 	})
 
 	// Before making a request print "Visiting ..."
 	pageCollector.OnRequest(func(r *colly.Request) {
-		fmt.Println("[Page Collector] Visiting", r.URL.String())
+		log.Debugf("[Page Collector] Visiting %s", r.URL.String())
 	})
 
 	jsCollector.OnRequest(func(r *colly.Request) {
-		fmt.Println("[JS Collector] Visiting", r.URL.String())
+		log.Debugf("[JS Collector] Visiting %s", r.URL.String())
 	})
 
 	pageCollector.OnError(func(response *colly.Response, err error) {
 		switch err.Error() {
 		case "Not Found":
-			fmt.Printf("[Page Collector ERROR] Not Found: %s\n", response.Request.URL)
+			//log.Errorf("[Page Collector ERROR] Not Found: %s", response.Request.URL)
 		case "Too Many Requests":
-			fmt.Println("Too Many Requests - Consider lowering threads and/or increasing delay.")
+			//log.Errorf("[Page Collector ERROR] Too Many Requests - Consider lowering threads and/or increasing delay.")
 		default:
-			fmt.Errorf("[Page Collector ERROR] %s\n", err.Error())
+			log.Errorf("[Page Collector ERROR] %s", err.Error())
 		}
 	})
 
 	jsCollector.OnError(func(response *colly.Response, err error) {
 		switch err.Error() {
 		case "Not Found":
-			//fmt.Printf("[JS Collector ERROR] Not Found: %s\n", response.Request.URL)
+			//log.Debugf("[JS Collector ERROR] Not Found: %s", response.Request.URL)
 			break
 		case "Too Many Requests":
-			//fmt.Println("[JS Collector ERROR] Too Many Requests - Consider lowering threads and/or increasing delay.")
+			//log.Debugf("[JS Collector ERROR] Too Many Requests - Consider lowering threads and/or increasing delay.")
 			break
 		default:
-			fmt.Errorf("[JS Collector ERROR] %s\n", err.Error())
+			log.Errorf("[JS Collector ERROR] %s", err.Error())
 			break
 		}
 	})
@@ -278,19 +306,19 @@ func main() {
 	unique.Sort(unique.StringSlice{P: &uniqueFoundUrls})
 	unique.Sort(unique.StringSlice{P: &uniqueVisitedUrls})
 
-	fmt.Printf("[~] Total found URLs: %v\n", len(foundUrls))
-	fmt.Printf("[~] Unique found URLs: %v\n", len(uniqueFoundUrls))
-	fmt.Printf("[~] Total visited URLs: %v\n", len(visitedUrls))
-	fmt.Printf("[~] Unique visited URLs: %v\n", len(visitedUrls))
+	log.Infof("[~] Total found URLs: %v", len(foundUrls))
+	log.Infof("[~] Unique found URLs: %v", len(uniqueFoundUrls))
+	log.Infof("[~] Total visited URLs: %v", len(visitedUrls))
+	log.Infof("[~] Unique visited URLs: %v", len(visitedUrls))
 
 	// If and output path is specified, save the file in that directory.
 	if outputPath != "" {
 		path := fmt.Sprintf("%s/unique_visited.txt", outputPath)
 		writeOutput(path, uniqueVisitedUrls)
 	} else {
-		fmt.Println("Found URLs: ")
+		log.Info("Found URLs: ")
 		for i := 0; i < len(uniqueVisitedUrls); i++ {
-			fmt.Printf("[+] %s\n", uniqueFoundUrls[i])
+			log.Infof("[+] %s", uniqueFoundUrls[i])
 		}
 	}
 
@@ -306,13 +334,13 @@ func stripQueryFromUrl(u *url.URL) string {
 func writeOutput(outputPath string, data []string) {
 	f, err := os.Create(outputPath)
 	if nil != err {
-		fmt.Println(err)
-		return
+		panic(err)
 	}
+
 	for i := 0; i < len(data); i++ {
 		_, err := f.WriteString(fmt.Sprintf("%s\n", data[i]))
 		if err != nil {
-			fmt.Println(err)
+			panic(err)
 			f.Close()
 			return
 		}
