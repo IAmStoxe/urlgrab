@@ -57,7 +57,7 @@ func main() {
 	// the function.
 	backend1Formatter := logging.NewBackendFormatter(loggingBackend1, format)
 
-	// Only errors and more severe messages should be sent to backend1
+	// Only errors and more severe messages should be sent to backend1'
 	backend1Leveled := logging.AddModuleLevel(loggingBackend1)
 	logging.SetLevel(logging.ERROR, "urlgrab")
 
@@ -76,7 +76,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.Infof("Domain: %v\n", parsedUrl.Host)
+	log.Infof("Domain: %v", parsedUrl.Host)
 
 	// Handle pageCollector instantiation with option debugging.
 	var pageCollector *colly.Collector = nil
@@ -88,7 +88,7 @@ func main() {
 	// path or not
 	pageRegexPattern := fmt.Sprintf("(http|s).*?\\.?%s(|/.*)", parsedUrl.Host)
 	jsRegexPattern := fmt.Sprintf("(http|s).*?\\.?%s(/.*\\.js)", parsedUrl.Host)
-	log.Debugf("Regex: %s\n", pageRegexPattern)
+	log.Debugf("Regex: %s", pageRegexPattern)
 
 	pageCollector = colly.NewCollector(
 		colly.Async(true),
@@ -219,7 +219,7 @@ func main() {
 			u = strings.Trim(u, "'")
 			absoluteURL := r.Request.AbsoluteURL(u)
 
-			//fmt.Printf("[JS Parser] Parsed Link #%v: %s\n", i, absoluteURL)
+			//fmt.Printf("[JS Parser] Parsed Link #%v: %s", i, absoluteURL)
 
 			// Trim the trailing slash
 			absoluteURL = strings.TrimRight(absoluteURL, "/")
