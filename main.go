@@ -266,6 +266,8 @@ func main() {
 
 	// Start scraping on our start URL
 	pageCollector.Visit(startUrl)
+
+	// Async means we must .Wait() on each Collector
 	pageCollector.Wait()
 	jsCollector.Wait()
 
