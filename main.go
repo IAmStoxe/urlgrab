@@ -24,7 +24,7 @@ func main() {
 	var (
 		depth          int
 		startUrl       string
-		socks5Proxy    string
+		suppliedProxy  string
 		outputPath     string
 		useRandomAgent bool
 		randomDelay    int64
@@ -35,7 +35,7 @@ func main() {
 	flag.IntVar(&depth, "depth", 100, "The  maximum depth to crawl.")
 	flag.Int64Var(&randomDelay, "delay", 2000, "Milliseconds to randomly apply as a delay between requests.")
 	flag.BoolVar(&ignoreQuery, "ignore-query", false, "Strip the query portion of the URL before determining if we've visited it yet.")
-	flag.StringVar(&socks5Proxy, "socks", "", "The SOCKS5 proxy to utilize (format 127.0.0.1:8080).")
+	flag.StringVar(&suppliedProxy, "socks", "", "The SOCKS5 proxy to utilize (format: socks://127.0.0.1:8080 OR http://127.0.0.1:8080).")
 	flag.StringVar(&outputPath, "output", "", "The directory where we should store the output files.")
 	flag.BoolVar(&useRandomAgent, "random-agent", false, "Utilize a random user agent string.")
 	flag.IntVar(&threadCount, "threads", 5, "The number of threads to utilize.")
@@ -52,35 +52,53 @@ func main() {
 
 	fmt.Printf("Domain: %v\n", parsedUrl.Host)
 
-	// Handle collector instantiation with option debugging.
-	var collector *colly.Collector = nil
+	// Handle pageCollector instantiation with option debugging.
+	var pageCollector *colly.Collector = nil
+	var jsCollector *colly.Collector = nil
 
 	// http or s
 	// subdomain or not
 	// domain name
 	// path or not
-	regexPattern := fmt.Sprintf("(http|s).*?\\.?%s(|/.*)", parsedUrl.Host)
-	fmt.Printf("Regex: %s\n", regexPattern)
+	pageRegexPattern := fmt.Sprintf("(http|s).*?\\.?%s(|/.*)", parsedUrl.Host)
+	jsRegexPattern := fmt.Sprintf("(http|s).*?\\.?%s(|/.*\\.js)", parsedUrl.Host)
+	fmt.Printf("Regex: %s\n", pageRegexPattern)
 
-	collector = colly.NewCollector(
+	pageCollector = colly.NewCollector(
 		colly.Async(true),
 		colly.MaxDepth(depth),
-		colly.URLFilters(regexp.MustCompile(regexPattern)),
+		colly.URLFilters(regexp.MustCompile(pageRegexPattern)),
 	)
 
+	jsCollector = colly.NewCollector(
+		colly.Async(true),
+		colly.MaxDepth(depth),
+		colly.URLFilters(regexp.MustCompile(jsRegexPattern)),
+	)
+
+	// Compile the JS parsing regex
+	// Shamelessly stolen/ported from https://github.com/GerbenJavado/LinkFinder/blob/master/linkfinder.py
+	urlParsingPattern := `(?:"|')(((?:[a-zA-Z]{1,10}://|//)[^"'/]{1,}\.[a-zA-Z]{2,}[^"']{0,})|((?:/|\.\./|\./)[^"'><,;| *()(%%$^/\\\[\]][^"'><,;|()]{1,})|([a-zA-Z0-9_\-/]{1,}/[a-zA-Z0-9_\-/]{1,}\.(?:[a-zA-Z]{1,4}|action)(?:[\?|#][^"|']{0,}|))|([a-zA-Z0-9_\-/]{1,}/[a-zA-Z0-9_\-/]{3,}(?:[\?|#][^"|']{0,}|))|([a-zA-Z0-9_\-]{1,}\.(?:php|asp|aspx|jsp|json|action|html|js|txt|xml)(?:[\?|#][^"|']{0,}|)))(?:"|')`
+	urlParsingRegex, err := regexp.Compile(urlParsingPattern)
+
+	if err != nil {
+		panic(err)
+	}
+
 	// Setup proxy if supplied
-	if socks5Proxy != "" {
-		// Rotate two socks5Proxy proxies
-		rp, err := proxy.RoundRobinProxySwitcher(fmt.Sprintf("socks5://%s", socks5Proxy))
+	if suppliedProxy != "" {
+		// Rotate proxies
+		rp, err := proxy.RoundRobinProxySwitcher(fmt.Sprintf("%s", suppliedProxy))
 		if err != nil {
 			log.Fatal(err)
 		}
-		collector.SetProxyFunc(rp)
+		pageCollector.SetProxyFunc(rp)
 	}
 
 	splitHost := strings.Split(parsedUrl.Host, ".")
 	rootDomainNameWithoutTld := splitHost[len(splitHost)-2]
-	collector.Limit(&colly.LimitRule{
+
+	pageCollector.Limit(&colly.LimitRule{
 		DomainGlob:  fmt.Sprintf("*%s.*", rootDomainNameWithoutTld),
 		Parallelism: threadCount,
 		RandomDelay: time.Duration(randomDelay) * time.Millisecond,
@@ -88,11 +106,11 @@ func main() {
 
 	// Use random user-agent if requested
 	if useRandomAgent {
-		extensions.RandomUserAgent(collector)
+		extensions.RandomUserAgent(pageCollector)
 	}
 
 	// On every a element which has href attribute call callback
-	collector.OnHTML("a[href]", func(e *colly.HTMLElement) {
+	pageCollector.OnHTML("a[href]", func(e *colly.HTMLElement) {
 
 		link := e.Attr("href")
 
@@ -101,50 +119,125 @@ func main() {
 		// Strip the query portion of the URL and remove trailing slash
 		var u, _ = url.Parse(absoluteURL)
 
+		// Ensure we're not visiting a mailto: or similar link
 		if !strings.Contains(u.Scheme, "http") {
 			return
 		}
 
+		// If we're ignoring query strip it, otherwise add it to the queue
+		var urlToVisit string
 		if ignoreQuery {
-			// Ignoring the query portion on the query. Stripping it from the URL
-			var strippedUrl = fmt.Sprintf("%s://%s%s", u.Scheme, u.Host, u.Path)
-			strippedUrl = strings.TrimRight(strippedUrl, "/")
-
-			// Add only if we do not have it already
-			if !arrayContains(foundUrls, strippedUrl) {
-				foundUrls = append(foundUrls, strippedUrl)
-				collector.Visit(strippedUrl)
-			}
-
+			strippedUrl := stripQueryFromUrl(u)
+			urlToVisit = strippedUrl
 		} else {
-			// Add only if we do not have it already
-			if !arrayContains(foundUrls, absoluteURL) {
-				foundUrls = append(foundUrls, absoluteURL)
-				collector.Visit(absoluteURL)
-			}
+			urlToVisit = absoluteURL
+		}
 
+		// Add only if we do not have it already
+		if !arrayContains(foundUrls, urlToVisit) {
+			foundUrls = append(foundUrls, urlToVisit)
+		}
+
+		pageCollector.Visit(urlToVisit)
+
+	})
+
+	// Scrape all found remote js files via src attribute
+	pageCollector.OnHTML("script[src]", func(e *colly.HTMLElement) {
+
+		link := e.Attr("src")
+
+		absoluteURL := e.Request.AbsoluteURL(link)
+
+		// Strip the query portion of the URL and remove trailing slash
+		var u, _ = url.Parse(absoluteURL)
+		var urlToVisit string
+
+		if ignoreQuery {
+			strippedUrl := stripQueryFromUrl(u)
+			urlToVisit = strippedUrl
+		} else {
+			urlToVisit = absoluteURL
+		}
+
+		// Add only if we do not have it already
+		if !arrayContains(foundUrls, urlToVisit) {
+			foundUrls = append(foundUrls, urlToVisit)
+			// Pass it to the JS collector
+			jsCollector.Visit(urlToVisit)
 		}
 
 	})
 
+	jsCollector.OnResponse(func(r *colly.Response) {
+
+		regexLinks := urlParsingRegex.FindAll(r.Body, -1)
+
+		for _, link := range regexLinks {
+			u := string(link)
+
+			// Skip blank entries
+			if len(u) <= 0 {
+				continue
+			}
+
+			// Remove the single and double quotes from the parsed link on the ends
+			u = strings.Trim(u, "\"")
+			u = strings.Trim(u, "'")
+			absoluteURL := r.Request.AbsoluteURL(u)
+
+			//fmt.Printf("[JS Parser] Parsed Link #%v: %s\n", i, absoluteURL)
+
+			// We submit all links we find and the collector will handle the parsing based on our URL filter
+			jsCollector.Visit(absoluteURL)
+		}
+
+		fmt.Printf("[JS Parser] Parsed %v urls from %s\n", len(regexLinks), r.Request.URL.String())
+
+	})
+
 	// These are the pages that were visited completely.
-	collector.OnScraped(func(r *colly.Response) {
+	pageCollector.OnScraped(func(r *colly.Response) {
+		// Scraped a page
+		visitedUrls = append(visitedUrls, r.Request.URL.String())
+	})
+
+	jsCollector.OnScraped(func(r *colly.Response) {
+		// Scraped a JS URL
 		visitedUrls = append(visitedUrls, r.Request.URL.String())
 	})
 
 	// Before making a request print "Visiting ..."
-	collector.OnRequest(func(r *colly.Request) {
-		fmt.Println("Visiting", r.URL.String())
+	pageCollector.OnRequest(func(r *colly.Request) {
+		fmt.Println("[Page Collector] Visiting", r.URL.String())
 	})
 
-	collector.OnError(func(response *colly.Response, err error) {
+	jsCollector.OnRequest(func(r *colly.Request) {
+		fmt.Printf("[JS Collector] Visiting %s\n", r.URL.String())
+	})
+
+	pageCollector.OnError(func(response *colly.Response, err error) {
 		switch err.Error() {
 		case "Not Found":
-			fmt.Printf("Not Found: %s\n", response.Request.URL)
+			fmt.Printf("[Page Collector ERROR] Not Found: %s\n", response.Request.URL)
 		case "Too Many Requests":
 			fmt.Println("Too Many Requests - Consider lowering threads and/or increasing delay.")
 		default:
-			fmt.Errorf("ERROR - %s\n", err.Error())
+			fmt.Errorf("[Page Collector ERROR] %s\n", err.Error())
+		}
+	})
+
+	jsCollector.OnError(func(response *colly.Response, err error) {
+		switch err.Error() {
+		case "Not Found":
+			//fmt.Printf("[JS Collector ERROR] Not Found: %s\n", response.Request.URL)
+			break
+		case "Too Many Requests":
+			//fmt.Println("[JS Collector ERROR] Too Many Requests - Consider lowering threads and/or increasing delay.")
+			break
+		default:
+			fmt.Errorf("[JS Collector ERROR] %s\n", err.Error())
+			break
 		}
 	})
 
@@ -157,8 +250,9 @@ func main() {
 	}
 
 	// Start scraping on our start URL
-	collector.Visit(startUrl)
-	collector.Wait()
+	pageCollector.Visit(startUrl)
+	pageCollector.Wait()
+	jsCollector.Wait()
 
 	var uniqueFoundUrls = foundUrls
 	var uniqueVisitedUrls = visitedUrls
@@ -183,6 +277,13 @@ func main() {
 		}
 	}
 
+}
+
+func stripQueryFromUrl(u *url.URL) string {
+	// Ignoring the query portion on the query. Stripping it from the URL
+	var strippedUrl = fmt.Sprintf("%s://%s%s", u.Scheme, u.Host, u.Path)
+	strippedUrl = strings.TrimRight(strippedUrl, "/")
+	return strippedUrl
 }
 
 func writeOutput(outputPath string, data []string) {
