@@ -209,12 +209,17 @@ func main() {
 	// These are the pages that were visited completely.
 	pageCollector.OnScraped(func(r *colly.Response) {
 		// Scraped a page
-		visitedUrls = append(visitedUrls, r.Request.URL.String())
+
+		// Trim trailing URL
+		u := strings.TrimRight(r.Request.URL.String(), "/")
+		visitedUrls = append(visitedUrls, u)
 	})
 
 	jsCollector.OnScraped(func(r *colly.Response) {
 		// Scraped a JS URL
-		visitedUrls = append(visitedUrls, r.Request.URL.String())
+
+		u := strings.TrimRight(r.Request.URL.String(), "/")
+		visitedUrls = append(visitedUrls, u)
 	})
 
 	// Before making a request print "Visiting ..."
@@ -223,7 +228,7 @@ func main() {
 	})
 
 	jsCollector.OnRequest(func(r *colly.Request) {
-		fmt.Printf("[JS Collector] Visiting %s\n", r.URL.String())
+		fmt.Println("[JS Collector] Visiting", r.URL.String())
 	})
 
 	pageCollector.OnError(func(response *colly.Response, err error) {
