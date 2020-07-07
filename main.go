@@ -68,8 +68,8 @@ func main() {
 	var jsCollector *colly.Collector = nil
 
 	regexReplacedHost := strings.Replace(parsedUrl.Host, ".", `\.`, -1)
-	pageRegexPattern := fmt.Sprintf(`(https?)://[^\s?#]*%s/?[^/\s]*`, regexReplacedHost)
-	jsRegexPattern := fmt.Sprintf(`(https?)://[^\s?#]*%s/?[^/\s]*\.js`, regexReplacedHost)
+	pageRegexPattern := fmt.Sprintf(`(https?)://[^\s?#/]*%s/?[^/\s]*`, regexReplacedHost)
+	jsRegexPattern := fmt.Sprintf(`(https?)://[^\s?#/]*%s/?[^/\s]*\.js`, regexReplacedHost)
 
 	log.Debugf("Regex: %s", pageRegexPattern)
 
