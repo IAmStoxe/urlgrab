@@ -200,6 +200,62 @@ func main() {
 
 	})
 
+	// These are the pages that were visited completely.
+	pageCollector.OnScraped(func(r *colly.Response) {
+		// Scraped a page
+
+		// Trim trailing slash in the URL
+		u := strings.TrimRight(r.Request.URL.String(), "/")
+		visitedUrls = append(visitedUrls, u)
+	})
+
+	// Before making a request print "Visiting ..."
+	pageCollector.OnRequest(func(r *colly.Request) {
+		log.Debugf("[Page Collector] Visiting %s", r.URL.String())
+	})
+
+	// On error execute the callback
+	pageCollector.OnError(func(response *colly.Response, err error) {
+		switch err.Error() {
+		case "Not Found":
+			//log.Errorf("[Page Collector ERROR] Not Found: %s", response.Request.URL)
+		case "Too Many Requests":
+			//log.Errorf("[Page Collector ERROR] Too Many Requests - Consider lowering threads and/or increasing delay.")
+		default:
+			log.Errorf("[Page Collector ERROR] %s", err.Error())
+		}
+	})
+
+	// Before making a request print "Visiting ..."
+	jsCollector.OnRequest(func(r *colly.Request) {
+		log.Debugf("[JS Collector] Visiting %s", r.URL.String())
+	})
+
+	// These are the pages that were visited completely.
+	jsCollector.OnScraped(func(r *colly.Response) {
+		// Scraped a JS URL
+
+		// Trim trailing slash in the URL
+		u := strings.TrimRight(r.Request.URL.String(), "/")
+		visitedUrls = append(visitedUrls, u)
+	})
+
+	// On error call the callback
+	jsCollector.OnError(func(response *colly.Response, err error) {
+		switch err.Error() {
+		case "Not Found":
+			//log.Debugf("[JS Collector ERROR] Not Found: %s", response.Request.URL)
+			break
+		case "Too Many Requests":
+			//log.Debugf("[JS Collector ERROR] Too Many Requests - Consider lowering threads and/or increasing delay.")
+			break
+		default:
+			log.Errorf("[JS Collector ERROR] %s", err.Error())
+			break
+		}
+	})
+
+	// On initial response execute the callback
 	jsCollector.OnResponse(func(r *colly.Response) {
 
 		regexLinks := urlParsingRegex.FindAll(r.Body, -1)
@@ -229,57 +285,6 @@ func main() {
 
 		log.Debugf("[JS Parser] Parsed %v urls from %s", len(regexLinks), r.Request.URL.String())
 
-	})
-
-	// These are the pages that were visited completely.
-	pageCollector.OnScraped(func(r *colly.Response) {
-		// Scraped a page
-
-		// Trim trailing slash in the URL
-		u := strings.TrimRight(r.Request.URL.String(), "/")
-		visitedUrls = append(visitedUrls, u)
-	})
-
-	jsCollector.OnScraped(func(r *colly.Response) {
-		// Scraped a JS URL
-
-		// Trim trailing slash in the URL
-		u := strings.TrimRight(r.Request.URL.String(), "/")
-		visitedUrls = append(visitedUrls, u)
-	})
-
-	// Before making a request print "Visiting ..."
-	pageCollector.OnRequest(func(r *colly.Request) {
-		log.Debugf("[Page Collector] Visiting %s", r.URL.String())
-	})
-
-	jsCollector.OnRequest(func(r *colly.Request) {
-		log.Debugf("[JS Collector] Visiting %s", r.URL.String())
-	})
-
-	pageCollector.OnError(func(response *colly.Response, err error) {
-		switch err.Error() {
-		case "Not Found":
-			//log.Errorf("[Page Collector ERROR] Not Found: %s", response.Request.URL)
-		case "Too Many Requests":
-			//log.Errorf("[Page Collector ERROR] Too Many Requests - Consider lowering threads and/or increasing delay.")
-		default:
-			log.Errorf("[Page Collector ERROR] %s", err.Error())
-		}
-	})
-
-	jsCollector.OnError(func(response *colly.Response, err error) {
-		switch err.Error() {
-		case "Not Found":
-			//log.Debugf("[JS Collector ERROR] Not Found: %s", response.Request.URL)
-			break
-		case "Too Many Requests":
-			//log.Debugf("[JS Collector ERROR] Too Many Requests - Consider lowering threads and/or increasing delay.")
-			break
-		default:
-			log.Errorf("[JS Collector ERROR] %s", err.Error())
-			break
-		}
 	})
 
 	// If outputting files, verify the directory exists:
