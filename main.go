@@ -68,8 +68,8 @@ func main() {
 	var jsCollector *colly.Collector = nil
 
 	regexReplacedHost := strings.Replace(parsedUrl.Host, ".", `\.`, -1)
-	pageRegexPattern := fmt.Sprintf(`(https?)://[^\s.?#]*%s/?[^/\s]*`, regexReplacedHost)
-	jsRegexPattern := fmt.Sprintf(`(https?)://[^\s.?#]*%s/?[^/\s]*\.js`, regexReplacedHost)
+	pageRegexPattern := fmt.Sprintf(`(https?)://[^\s?#]*%s/?[^/\s]*`, regexReplacedHost)
+	jsRegexPattern := fmt.Sprintf(`(https?)://[^\s?#]*%s/?[^/\s]*\.js`, regexReplacedHost)
 
 	log.Debugf("Regex: %s", pageRegexPattern)
 
@@ -93,7 +93,7 @@ func main() {
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		}
 
-		// Setup the client to pass to the collectors
+		// Setup the client with our transport to pass to the collectors
 		client := &http.Client{Transport: tr}
 
 		pageCollector.SetClient(client)
