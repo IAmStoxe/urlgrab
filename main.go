@@ -223,7 +223,7 @@ func main() {
 			absoluteURL = strings.TrimRight(absoluteURL, "/")
 
 			// We submit all links we find and the collector will handle the parsing based on our URL filter
-			// We submit them back to the main collector
+			// We submit them back to the main collector so it's parsed like any other page
 			pageCollector.Visit(absoluteURL)
 		}
 
