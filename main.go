@@ -317,8 +317,10 @@ func main() {
 
 	// If and output path is specified, save the file in that directory.
 	if outputPath != "" {
-		path := fmt.Sprintf("%s/unique_visited.txt", outputPath)
-		writeOutput(path, uniqueVisitedUrls)
+		uniqueVisitedPath := fmt.Sprintf("%s/unique_visited.txt", outputPath)
+		uniqueFoundPath := fmt.Sprintf("%s/unique_found.txt", outputPath)
+		writeOutput(uniqueVisitedPath, uniqueVisitedUrls)
+		writeOutput(uniqueFoundPath, uniqueFoundUrls)
 	} else {
 		log.Info("Found URLs: ")
 		for i := 0; i < len(uniqueVisitedUrls); i++ {
