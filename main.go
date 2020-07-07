@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"github.com/gocolly/colly/v2"
@@ -8,6 +9,7 @@ import (
 	"github.com/gocolly/colly/v2/proxy"
 	"github.com/mpvl/unique"
 	"github.com/op/go-logging"
+	"net/http"
 	"net/url"
 	"os"
 	"regexp"
@@ -31,6 +33,7 @@ func main() {
 		threadCount    int
 		ignoreQuery    bool
 		verbose        bool
+		ignoreSSL      bool
 	)
 	flag.StringVar(&startUrl, "url", "", "The URL where we should start crawling.")
 	flag.IntVar(&depth, "depth", 100, "The  maximum depth to crawl.")
@@ -41,33 +44,14 @@ func main() {
 	flag.BoolVar(&useRandomAgent, "random-agent", false, "Utilize a random user agent string.")
 	flag.IntVar(&threadCount, "threads", 5, "The number of threads to utilize.")
 	flag.BoolVar(&verbose, "verbose", false, "Verbose output")
+	flag.BoolVar(&ignoreSSL, "ignore-ssl", false, "Scrape pages with invalid SSL certificates")
 
 	flag.Parse()
 
 	// Setup the logging instance
 	var log = logging.MustGetLogger("urlgrab")
-	var format = logging.MustStringFormatter(
-		`%{color}%{shortfunc} ▶ %{level:.5s}%{color:reset} %{message}`,
-	)
-	// Create backend for os.Stderr.
-	loggingBackend1 := logging.NewLogBackend(os.Stderr, "", 0)
 
-	// For messages written to loggingBackend1 we want to add some additional
-	// information to the output, including the used log level and the name of
-	// the function.
-	backend1Formatter := logging.NewBackendFormatter(loggingBackend1, format)
-
-	// Only errors and more severe messages should be sent to backend1'
-	backend1Leveled := logging.AddModuleLevel(loggingBackend1)
-
-	if verbose == true {
-		backend1Leveled.SetLevel(logging.DEBUG, "")
-	} else {
-		logging.SetLevel(logging.ERROR, "urlgrab")
-	}
-
-	// Set the backends to be used.
-	logging.SetBackend(backend1Leveled, backend1Formatter)
+	setupLogging(verbose)
 
 	// Validate the user passed URL
 	parsedUrl, err := url.Parse(startUrl)
@@ -83,8 +67,9 @@ func main() {
 	var pageCollector *colly.Collector = nil
 	var jsCollector *colly.Collector = nil
 
-	pageRegexPattern := fmt.Sprintf("(http|https)://([^/]*\\.?%s)/?[^ ]*", parsedUrl.Host)
-	jsRegexPattern := fmt.Sprintf("(http|https)://([^/]*\\.?%s)/?[^ ]*\\.js", parsedUrl.Host)
+	regexReplacedHost := strings.Replace(parsedUrl.Host, ".", `\.`, -1)
+	pageRegexPattern := fmt.Sprintf(`(https?)://[^\s.?#]*%s/?[^/\s]*`, regexReplacedHost)
+	jsRegexPattern := fmt.Sprintf(`(https?)://[^\s.?#]*%s/?[^/\s]*\.js`, regexReplacedHost)
 
 	log.Debugf("Regex: %s", pageRegexPattern)
 
@@ -99,6 +84,22 @@ func main() {
 		colly.MaxDepth(depth),
 		colly.URLFilters(regexp.MustCompile(jsRegexPattern)),
 	)
+
+	// If we ignore SSL certs set the default transport
+	// https://github.com/gocolly/colly/issues/422#issuecomment-573483601
+	if ignoreSSL {
+		// Setup the transport
+		tr := &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
+
+		// Setup the client to pass to the collectors
+		client := &http.Client{Transport: tr}
+
+		pageCollector.SetClient(client)
+		jsCollector.SetClient(client)
+
+	}
 
 	// Compile the JS parsing regex
 	// Shamelessly stolen/ported from https://github.com/GerbenJavado/LinkFinder/blob/master/linkfinder.py
@@ -325,6 +326,31 @@ func main() {
 		}
 	}
 
+}
+
+func setupLogging(verbose bool) {
+	var format = logging.MustStringFormatter(
+		`%{color}%{shortfunc} ▶ %{level:.5s}%{color:reset} %{message}`,
+	)
+	// Create backend for os.Stderr.
+	loggingBackend1 := logging.NewLogBackend(os.Stderr, "", 0)
+
+	// For messages written to loggingBackend1 we want to add some additional
+	// information to the output, including the used log level and the name of
+	// the function.
+	backend1Formatter := logging.NewBackendFormatter(loggingBackend1, format)
+
+	// Only errors and more severe messages should be sent to backend1'
+	backend1Leveled := logging.AddModuleLevel(loggingBackend1)
+
+	if verbose == true {
+		backend1Leveled.SetLevel(logging.DEBUG, "")
+	} else {
+		logging.SetLevel(logging.ERROR, "urlgrab")
+	}
+
+	// Set the backends to be used.
+	logging.SetBackend(backend1Leveled, backend1Formatter)
 }
 
 func stripQueryFromUrl(u *url.URL) string {
