@@ -36,7 +36,7 @@ func main() {
 	flag.IntVar(&depth, "depth", 100, "The  maximum depth to crawl.")
 	flag.Int64Var(&randomDelay, "delay", 2000, "Milliseconds to randomly apply as a delay between requests.")
 	flag.BoolVar(&ignoreQuery, "ignore-query", false, "Strip the query portion of the URL before determining if we've visited it yet.")
-	flag.StringVar(&suppliedProxy, "proxy", "", "The SOCKS5 proxy to utilize (format: socks://127.0.0.1:8080 OR http://127.0.0.1:8080).")
+	flag.StringVar(&suppliedProxy, "proxy", "", "The SOCKS5 proxy to utilize (format: socks5://127.0.0.1:8080 OR http://127.0.0.1:8080).")
 	flag.StringVar(&outputPath, "output", "", "The directory where we should store the output files.")
 	flag.BoolVar(&useRandomAgent, "random-agent", false, "Utilize a random user agent string.")
 	flag.IntVar(&threadCount, "threads", 5, "The number of threads to utilize.")
