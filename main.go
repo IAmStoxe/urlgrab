@@ -59,10 +59,11 @@ func main() {
 
 	// Only errors and more severe messages should be sent to backend1'
 	backend1Leveled := logging.AddModuleLevel(loggingBackend1)
-	logging.SetLevel(logging.ERROR, "urlgrab")
 
 	if verbose == true {
 		backend1Leveled.SetLevel(logging.DEBUG, "")
+	} else {
+		logging.SetLevel(logging.ERROR, "urlgrab")
 	}
 
 	// Set the backends to be used.
@@ -82,12 +83,9 @@ func main() {
 	var pageCollector *colly.Collector = nil
 	var jsCollector *colly.Collector = nil
 
-	// http or s
-	// subdomain or not
-	// domain name
-	// path or not
-	pageRegexPattern := fmt.Sprintf("(http|s).*?\\.?%s(|/.*)", parsedUrl.Host)
-	jsRegexPattern := fmt.Sprintf("(http|s).*?\\.?%s(/.*\\.js)", parsedUrl.Host)
+	pageRegexPattern := fmt.Sprintf("(http|https)://([^/]*\\.?%s)/?[^ ]*", parsedUrl.Host)
+	jsRegexPattern := fmt.Sprintf("(http|https)://([^/]*\\.?%s)/?[^ ]*\\.js", parsedUrl.Host)
+
 	log.Debugf("Regex: %s", pageRegexPattern)
 
 	pageCollector = colly.NewCollector(
@@ -167,7 +165,7 @@ func main() {
 			foundUrls = append(foundUrls, urlToVisit)
 		}
 
-		pageCollector.Visit(urlToVisit)
+		e.Request.Visit(urlToVisit)
 
 	})
 
@@ -348,7 +346,7 @@ func writeOutput(outputPath string, data []string) {
 
 	err = f.Close()
 	if err != nil {
-		fmt.Println(err)
+		panic(err)
 		return
 	}
 }
