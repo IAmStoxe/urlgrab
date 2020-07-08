@@ -17,6 +17,9 @@ import (
 	"time"
 )
 
+// Setup the logging instance
+var log = logging.MustGetLogger("")
+
 func main() {
 
 	var foundUrls []string
@@ -49,9 +52,6 @@ func main() {
 	flag.IntVar(&timeout, "timeout", 10, "The amount of seconds before a request should timeout.")
 
 	flag.Parse()
-
-	// Setup the logging instance
-	var log = logging.MustGetLogger("urlgrab")
 
 	setupLogging(verbose)
 
@@ -359,28 +359,25 @@ func main() {
 }
 
 func setupLogging(verbose bool) {
-	var format = logging.MustStringFormatter(
+	formatter := logging.MustStringFormatter(
 		`%{color}%{shortfunc} ▶ %{level:.5s}%{color:reset} %{message}`,
 	)
 	// Create backend for os.Stderr.
-	loggingBackend1 := logging.NewLogBackend(os.Stderr, "", 0)
+	loggingBackend1 := logging.NewLogBackend(os.Stdout, "", 0)
 
-	// For messages written to loggingBackend1 we want to add some additional
-	// information to the output, including the used log level and the name of
-	// the function.
-	backend1Formatter := logging.NewBackendFormatter(loggingBackend1, format)
-
-	// Only errors and more severe messages should be sent to backend1'
-	backend1Leveled := logging.AddModuleLevel(loggingBackend1)
+	//backendFormatter := logging.NewBackendFormatter(loggingBackend1, formatter)
+	backendLeveled := logging.AddModuleLevel(loggingBackend1)
 
 	if verbose == true {
-		backend1Leveled.SetLevel(logging.DEBUG, "")
+		backendLeveled.SetLevel(logging.DEBUG, "")
 	} else {
-		logging.SetLevel(logging.ERROR, "urlgrab")
+		backendLeveled.SetLevel(logging.INFO, "")
 	}
 
-	// Set the backends to be used.
-	logging.SetBackend(backend1Leveled, backend1Formatter)
+	logging.SetFormatter(formatter)
+	log.SetBackend(backendLeveled)
+
+	log.Debug("Logger instantiated and configured!")
 }
 
 func stripQueryFromUrl(u *url.URL) string {
