@@ -30,7 +30,8 @@ Usage of urlgrab.exe:
   -output-all string
         The directory where we should store the output files.
   -proxy string
-        The SOCKS5 proxy to utilize (format: socks5://127.0.0.1:8080 OR http://127.0.0.1:8080). Supply multiple proxies by separating them with a comma.
+        The SOCKS5 proxy to utilize (format: socks5://127.0.0.1:8080 OR http://127.0.0.1:8080).
+        Supply multiple proxies by separating them with a comma.
   -random-agent
         Utilize a random user agent string.
   -threads int

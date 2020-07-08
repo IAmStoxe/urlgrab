@@ -439,7 +439,7 @@ func writeToJsonFile(outputPath string, data interface{}) {
 		panic(err)
 	}
 
-	jsonData, err := json.MarshalIndent(data, "", "    ")
+	jsonData, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		panic(err)
 	}
