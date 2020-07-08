@@ -79,12 +79,16 @@ func main() {
 
 	pageCollector = colly.NewCollector(
 		colly.Async(true),
+		colly.CheckHead(),
+		colly.IgnoreRobotsTxt(),
 		colly.MaxDepth(depth),
 		colly.URLFilters(regexp.MustCompile(pageRegexPattern)),
 	)
 
 	jsCollector = colly.NewCollector(
 		colly.Async(true),
+		colly.CheckHead(),
+		colly.IgnoreRobotsTxt(),
 		colly.MaxDepth(depth),
 		colly.URLFilters(regexp.MustCompile(jsRegexPattern)),
 	)
