@@ -34,6 +34,7 @@ func main() {
 		ignoreQuery    bool
 		verbose        bool
 		ignoreSSL      bool
+		timeout        int
 	)
 	flag.StringVar(&startUrl, "url", "", "The URL where we should start crawling.")
 	flag.IntVar(&depth, "depth", 100, "The  maximum depth to crawl.")
@@ -45,6 +46,7 @@ func main() {
 	flag.IntVar(&threadCount, "threads", 5, "The number of threads to utilize.")
 	flag.BoolVar(&verbose, "verbose", false, "Verbose output")
 	flag.BoolVar(&ignoreSSL, "ignore-ssl", false, "Scrape pages with invalid SSL certificates")
+	flag.IntVar(&timeout, "timeout", 10, "The amount of seconds before a request should timeout.")
 
 	flag.Parse()
 
@@ -68,8 +70,8 @@ func main() {
 	var jsCollector *colly.Collector = nil
 
 	regexReplacedHost := strings.Replace(parsedUrl.Host, ".", `\.`, -1)
-	pageRegexPattern := fmt.Sprintf(`(https?)://[^\s?#/]*%s/?[^/\s]*`, regexReplacedHost)
-	jsRegexPattern := fmt.Sprintf(`(https?)://[^\s?#/]*%s/?[^/\s]*\.js`, regexReplacedHost)
+	pageRegexPattern := fmt.Sprintf(`(https?)://[^\s?#/]*%s/?[^\s]*`, regexReplacedHost)
+	jsRegexPattern := fmt.Sprintf(`(https?)://[^\s?#/]*%s/?[^\s]*\.js`, regexReplacedHost)
 
 	log.Debugf("Regex: %s", pageRegexPattern)
 
@@ -84,6 +86,10 @@ func main() {
 		colly.MaxDepth(depth),
 		colly.URLFilters(regexp.MustCompile(jsRegexPattern)),
 	)
+
+	// Set the timeouts for each collector
+	pageCollector.SetRequestTimeout(time.Duration(timeout) * time.Second)
+	jsCollector.SetRequestTimeout(time.Duration(timeout) * time.Second)
 
 	// If we ignore SSL certs set the default transport
 	// https://github.com/gocolly/colly/issues/422#issuecomment-573483601
@@ -113,11 +119,13 @@ func main() {
 	// Setup proxy if supplied
 	if suppliedProxy != "" {
 		// Rotate proxies
-		rp, err := proxy.RoundRobinProxySwitcher(fmt.Sprintf("%s", suppliedProxy))
+		log.Infof("Proxy set to: %s", suppliedProxy)
+		rp, err := proxy.RoundRobinProxySwitcher(suppliedProxy, suppliedProxy)
 		if err != nil {
 			log.Fatal(err)
 		}
 		pageCollector.SetProxyFunc(rp)
+		jsCollector.SetProxyFunc(rp)
 	}
 
 	splitHost := strings.Split(parsedUrl.Host, ".")
