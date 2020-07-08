@@ -18,21 +18,33 @@ go get -u github.com/iamstoxe/urlgrab
 ## Usage
 
 ```bash
-urlgrab --url=https://httpbin.org/links/200/0 \
-        # Go 3 levels deep \
-        --depth=3 \
-        # Utilize 10 threads \ 
-        --threads=10 \ 
-         # Randomly apply a 2000ms delay \
-        --delay=2000 \
-        # Output to the specified directory \
-        --output=/home/myuser
-        # Utilize a HTTP or SOCKS5 proxy \
-        --proxy=http://127.0.0.1:8080
-        # Ignore the query portion of urls \
-        --ignore-query \ 
-         # Utilize a random user-agent        
-        --random-agent
+urlgrab.exe -h
+
+Usage of urlgrab.exe:
+  -delay int
+        Milliseconds to randomly apply as a delay between requests. (default 2000)
+  -depth int
+        The  maximum depth to crawl. (default 100)
+  -ignore-query
+        Strip the query portion of the URL before determining if we've visited it yet.
+  -ignore-ssl
+        Scrape pages with invalid SSL certificates
+  -output string
+        The directory where we should store the output files.
+  -proxy string
+        The SOCKS5 proxy to utilize (format: socks5://127.0.0.1:8080 OR http://127.0.0.1:8080).
+  -random-agent
+        Utilize a random user agent string.
+  -threads int
+        The number of threads to utilize. (default 5)
+  -timeout int
+        The amount of seconds before a request should timeout. (default 10)
+  -url string
+        The URL where we should start crawling.
+  -verbose
+        Verbose output
+
+
 ```
 
 ###### Note
