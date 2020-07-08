@@ -17,6 +17,5 @@
 # vendor/
 
 /.idea/
-/unique_visited.txt
-/unique_found.txt
-/results.json
+/.txt
+/.json
