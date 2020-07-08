@@ -18,7 +18,7 @@ go get -u github.com/iamstoxe/urlgrab
 ```sh
 Usage of urlgrab.exe:
   -delay int
-        Milliseconds to randomly apply as a delay between requests. (default 2000)
+        Milliseconds to apply as a delay between requests. (default 2000)
   -depth int
         The maximum limit on the recursion depth of visited URLs.  (default 100)
   -ignore-query
@@ -28,7 +28,8 @@ Usage of urlgrab.exe:
   -output string
         The directory where we should store the output files.
   -proxy string
-        The SOCKS5 proxy to utilize (format: socks5://127.0.0.1:8080 OR http://127.0.0.1:8080). Supply multiple proxies by separating them with a comma.
+        The SOCKS5 proxy to utilize (format: socks5://127.0.0.1:8080 OR http://127.0.0.1:8080).
+        Supply multiple proxies by separating them with a comma.
   -random-agent
         Utilize a random user agent string.
   -threads int
