@@ -184,6 +184,8 @@ func main() {
 
 		// Trim the trailing slash
 		urlToVisit = strings.TrimRight(urlToVisit, "/")
+		// Trim the spaces on either end (if any)
+		urlToVisit = strings.Trim(urlToVisit, " ")
 
 		// Add only if we do not have it already
 		if !arrayContains(foundUrls, urlToVisit) {
@@ -214,6 +216,8 @@ func main() {
 
 		// Trim the trailing slash
 		urlToVisit = strings.TrimRight(urlToVisit, "/")
+		// Trim the spaces on either end (if any)
+		urlToVisit = strings.Trim(urlToVisit, " ")
 
 		// Add only if we do not have it already
 		if !arrayContains(foundUrls, urlToVisit) {
