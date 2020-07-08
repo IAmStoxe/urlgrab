@@ -40,7 +40,7 @@ func main() {
 	flag.IntVar(&depth, "depth", 100, "The  maximum depth to crawl.")
 	flag.Int64Var(&randomDelay, "delay", 2000, "Milliseconds to randomly apply as a delay between requests.")
 	flag.BoolVar(&ignoreQuery, "ignore-query", false, "Strip the query portion of the URL before determining if we've visited it yet.")
-	flag.StringVar(&suppliedProxy, "proxy", "", "The SOCKS5 proxy to utilize (format: socks5://127.0.0.1:8080 OR http://127.0.0.1:8080).")
+	flag.StringVar(&suppliedProxy, "proxy", "", "The SOCKS5 proxy to utilize (format: socks5://127.0.0.1:8080 OR http://127.0.0.1:8080). Supply multiple proxies by separating them with a comma.")
 	flag.StringVar(&outputPath, "output", "", "The directory where we should store the output files.")
 	flag.BoolVar(&useRandomAgent, "random-agent", false, "Utilize a random user agent string.")
 	flag.IntVar(&threadCount, "threads", 5, "The number of threads to utilize.")
@@ -118,14 +118,30 @@ func main() {
 
 	// Setup proxy if supplied
 	if suppliedProxy != "" {
-		// Rotate proxies
-		log.Infof("Proxy set to: %s", suppliedProxy)
-		rp, err := proxy.RoundRobinProxySwitcher(suppliedProxy, suppliedProxy)
-		if err != nil {
-			log.Fatal(err)
+		var proxySwitcher colly.ProxyFunc
+
+		// If more than one proxy was supplied
+		if strings.Contains(suppliedProxy, ",") {
+			proxies := strings.Split(suppliedProxy, ",")
+			log.Infof("Proxies loaded: %v", len(proxies))
+			rrps, err := proxy.RoundRobinProxySwitcher(proxies...)
+			if err != nil {
+				log.Fatal(err)
+			}
+			proxySwitcher = rrps
+		} else {
+			log.Infof("Proxy set to: %s", suppliedProxy)
+			rrps, err := proxy.RoundRobinProxySwitcher(suppliedProxy, suppliedProxy)
+
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			proxySwitcher = rrps
 		}
-		pageCollector.SetProxyFunc(rp)
-		jsCollector.SetProxyFunc(rp)
+
+		pageCollector.SetProxyFunc(proxySwitcher)
+		jsCollector.SetProxyFunc(proxySwitcher)
 	}
 
 	splitHost := strings.Split(parsedUrl.Host, ".")
