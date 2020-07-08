@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/gocolly/colly/v2"
@@ -13,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -20,32 +22,40 @@ import (
 // Setup the logging instance
 var log = logging.MustGetLogger("")
 
-func main() {
+type DomainInfo struct {
+	Host  string   `json:"host"`
+	Count int      `json:"count"`
+	Urls  []string `json:"urls"`
+}
 
+func main() {
 	var foundUrls []string
 	var visitedUrls []string
+	var results []DomainInfo
 
 	// Params
 	var (
-		depth          int
-		startUrl       string
-		suppliedProxy  string
-		outputPath     string
-		useRandomAgent bool
-		randomDelay    int64
-		threadCount    int
-		ignoreQuery    bool
-		verbose        bool
-		ignoreSSL      bool
-		useReferer     bool
-		timeout        int
+		depth              int
+		startUrl           string
+		suppliedProxy      string
+		outputAllDirPath   string
+		outputJsonFilePath string
+		useRandomAgent     bool
+		randomDelay        int64
+		threadCount        int
+		ignoreQuery        bool
+		verbose            bool
+		ignoreSSL          bool
+		useReferer         bool
+		timeout            int
 	)
 	flag.StringVar(&startUrl, "url", "", "The URL where we should start crawling.")
 	flag.IntVar(&depth, "depth", 2, "The maximum limit on the recursion depth of visited URLs. ")
 	flag.Int64Var(&randomDelay, "delay", 2000, "Milliseconds to randomly apply as a delay between requests.")
 	flag.BoolVar(&ignoreQuery, "ignore-query", false, "Strip the query portion of the URL before determining if we've visited it yet.")
 	flag.StringVar(&suppliedProxy, "proxy", "", "The SOCKS5 proxy to utilize (format: socks5://127.0.0.1:8080 OR http://127.0.0.1:8080). Supply multiple proxies by separating them with a comma.")
-	flag.StringVar(&outputPath, "output", "", "The directory where we should store the output files.")
+	flag.StringVar(&outputAllDirPath, "output-all", "", "The directory where we should store the output files.")
+	flag.StringVar(&outputJsonFilePath, "json", "", "The filename where we should store the output JSON file.")
 	flag.BoolVar(&useRandomAgent, "random-agent", false, "Utilize a random user agent string.")
 	flag.IntVar(&threadCount, "threads", 5, "The number of threads to utilize.")
 	flag.BoolVar(&verbose, "verbose", false, "Verbose output")
@@ -248,6 +258,27 @@ func main() {
 		// Trim trailing slash in the URL
 		u := strings.TrimRight(r.Request.URL.String(), "/")
 		visitedUrls = append(visitedUrls, u)
+
+		// Find a matching host in our results array otherwise crate it
+		idx := sort.Search(len(results), func(i int) bool {
+			return results[i].Host == r.Request.URL.Host
+		})
+
+		if idx < len(results) && results[idx].Host == r.Request.URL.Host {
+			results[idx].Urls = append(results[idx].Urls, r.Request.URL.String())
+			results[idx].Count = len(results[idx].Urls)
+		} else {
+			// We didn't find the match, so let's make it and add it to results
+			di := DomainInfo{
+				Host: r.Request.URL.Host,
+			}
+			di.Urls = append(di.Urls, r.Request.URL.String())
+			di.Count = len(di.Urls)
+
+			results = append(results, di)
+
+		}
+
 	})
 
 	// Before making a request print "Visiting ..."
@@ -329,8 +360,8 @@ func main() {
 	})
 
 	// If outputting files, verify the directory exists:
-	if outputPath != "" {
-		if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+	if outputAllDirPath != "" {
+		if _, err := os.Stat(outputAllDirPath); os.IsNotExist(err) {
 			log.Fatal(err)
 			os.Exit(1)
 		}
@@ -356,16 +387,19 @@ func main() {
 	log.Infof("[~] Unique visited URLs: %v", len(visitedUrls))
 
 	// If and output path is specified, save the file in that directory.
-	if outputPath != "" {
-		uniqueVisitedPath := fmt.Sprintf("%s/unique_visited.txt", outputPath)
-		uniqueFoundPath := fmt.Sprintf("%s/unique_found.txt", outputPath)
-		writeOutput(uniqueVisitedPath, uniqueVisitedUrls)
-		writeOutput(uniqueFoundPath, uniqueFoundUrls)
-	} else {
-		log.Info("Found URLs: ")
-		for i := 0; i < len(uniqueVisitedUrls); i++ {
-			log.Infof("[+] %s", uniqueFoundUrls[i])
-		}
+	if outputAllDirPath != "" {
+		uniqueVisitedPath := fmt.Sprintf("%s/unique_visited.txt", outputAllDirPath)
+		uniqueFoundPath := fmt.Sprintf("%s/unique_found.txt", outputAllDirPath)
+		writeLines(uniqueVisitedPath, uniqueVisitedUrls)
+		writeLines(uniqueFoundPath, uniqueFoundUrls)
+		writeLines(uniqueFoundPath, uniqueFoundUrls)
+		writeLines(uniqueFoundPath, uniqueFoundUrls)
+
+	} else if outputJsonFilePath != "" {
+
+		writeToJsonFile(outputJsonFilePath, results)
+		log.Infof("Output saved to %s", outputJsonFilePath)
+
 	}
 
 }
@@ -399,7 +433,32 @@ func stripQueryFromUrl(u *url.URL) string {
 	return strippedUrl
 }
 
-func writeOutput(outputPath string, data []string) {
+func writeToJsonFile(outputPath string, data interface{}) {
+	f, err := os.Create(outputPath)
+	if nil != err {
+		panic(err)
+	}
+
+	jsonData, err := json.MarshalIndent(data, "", "    ")
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = f.WriteString(string(jsonData))
+	if err != nil {
+		panic(err)
+		f.Close()
+		return
+	}
+
+	err = f.Close()
+	if err != nil {
+		panic(err)
+		return
+	}
+}
+
+func writeLines(outputPath string, data []string) {
 	f, err := os.Create(outputPath)
 	if nil != err {
 		panic(err)
