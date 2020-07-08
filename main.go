@@ -37,6 +37,7 @@ func main() {
 		ignoreQuery    bool
 		verbose        bool
 		ignoreSSL      bool
+		useReferer     bool
 		timeout        int
 	)
 	flag.StringVar(&startUrl, "url", "", "The URL where we should start crawling.")
@@ -50,6 +51,7 @@ func main() {
 	flag.BoolVar(&verbose, "verbose", false, "Verbose output")
 	flag.BoolVar(&ignoreSSL, "ignore-ssl", false, "Scrape pages with invalid SSL certificates")
 	flag.IntVar(&timeout, "timeout", 10, "The amount of seconds before a request should timeout.")
+	flag.BoolVar(&useReferer, "use-referer", 10, "Referer sets valid Referer HTTP header to requests from the crawled URL.")
 
 	flag.Parse()
 
@@ -156,6 +158,12 @@ func main() {
 	// Use random user-agent if requested
 	if useRandomAgent {
 		extensions.RandomUserAgent(pageCollector)
+	}
+
+	// Use the referer if requested
+	if useReferer {
+		extensions.Referer(pageCollector)
+		// Won't work on the JS collector as you have the od the relevative .Visit()
 	}
 
 	// On every a element which has href attribute call callback
