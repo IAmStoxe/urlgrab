@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/gocolly/colly/v2"
+	"github.com/gocolly/colly/v2/debug"
 	"github.com/gocolly/colly/v2/extensions"
 	"github.com/gocolly/colly/v2/proxy"
 	"github.com/mpvl/unique"
@@ -35,33 +36,39 @@ func main() {
 
 	// Params
 	var (
-		depth              int
-		startUrl           string
-		suppliedProxy      string
-		outputAllDirPath   string
-		outputJsonFilePath string
-		useRandomAgent     bool
-		randomDelay        int64
-		threadCount        int
-		ignoreQuery        bool
-		verbose            bool
-		ignoreSSL          bool
-		useReferer         bool
-		timeout            int
+		debugFlag           bool
+		depth               int
+		ignoreQuery         bool
+		ignoreSSL           bool
+		maxResponseBodySize int
+		noHeadRequest       bool
+		outputAllDirPath    string
+		outputJsonFilePath  string
+		randomDelay         int64
+		startUrl            string
+		suppliedProxy       string
+		threadCount         int
+		timeout             int
+		useRandomAgent      bool
+		useReferer          bool
+		verbose             bool
 	)
 	flag.StringVar(&startUrl, "url", "", "The URL where we should start crawling.")
 	flag.IntVar(&depth, "depth", 2, "The maximum limit on the recursion depth of visited URLs. ")
 	flag.Int64Var(&randomDelay, "delay", 2000, "Milliseconds to randomly apply as a delay between requests.")
 	flag.BoolVar(&ignoreQuery, "ignore-query", false, "Strip the query portion of the URL before determining if we've visited it yet.")
-	flag.StringVar(&suppliedProxy, "proxy", "", "The SOCKS5 proxy to utilize (format: socks5://127.0.0.1:8080 OR http://127.0.0.1:8080). Supply multiple proxies by separating them with a comma.")
+	flag.StringVar(&suppliedProxy, "proxy", "", "The SOCKS5 proxy to utilize (format: socks5://127.0.0.1:8080 OR http://127.0.0.1:8080).\nSupply multiple proxies by separating them with a comma.")
 	flag.StringVar(&outputAllDirPath, "output-all", "", "The directory where we should store the output files.")
 	flag.StringVar(&outputJsonFilePath, "json", "", "The filename where we should store the output JSON file.")
 	flag.BoolVar(&useRandomAgent, "random-agent", false, "Utilize a random user agent string.")
 	flag.IntVar(&threadCount, "threads", 5, "The number of threads to utilize.")
 	flag.BoolVar(&verbose, "verbose", false, "Verbose output")
+	flag.BoolVar(&debugFlag, "debugFlag", false, "Extremely verbose debugging output. Useful mainly for development.")
 	flag.BoolVar(&ignoreSSL, "ignore-ssl", false, "Scrape pages with invalid SSL certificates")
 	flag.IntVar(&timeout, "timeout", 10, "The amount of seconds before a request should timeout.")
 	flag.BoolVar(&useReferer, "use-referer", false, "Referer sets valid Referer HTTP header to requests from the crawled URL.")
+	flag.BoolVar(&noHeadRequest, "no-head", false, "Do not send HEAD requests prior to GET for pre-validation.")
+	flag.IntVar(&maxResponseBodySize, "max-body", 10*1024, "The limit of the retrieved response body in kilobytes.\n0 means unlimited.\nSupply this value in kilobytes. (i.e. 10 * 1024kb = 10MB)")
 
 	flag.Parse()
 
@@ -89,7 +96,6 @@ func main() {
 
 	pageCollector = colly.NewCollector(
 		colly.Async(true),
-		colly.CheckHead(),
 		colly.IgnoreRobotsTxt(),
 		colly.MaxDepth(depth),
 		colly.URLFilters(regexp.MustCompile(pageRegexPattern)),
@@ -97,11 +103,23 @@ func main() {
 
 	jsCollector = colly.NewCollector(
 		colly.Async(true),
-		colly.CheckHead(),
 		colly.IgnoreRobotsTxt(),
 		colly.MaxDepth(depth),
 		colly.URLFilters(regexp.MustCompile(jsRegexPattern)),
 	)
+
+	// Specify if we should send HEAD requests before the GET requests
+	pageCollector.CheckHead = noHeadRequest
+	jsCollector.CheckHead = noHeadRequest
+
+	// Specify the max response body size we'll allow
+	pageCollector.MaxBodySize = maxResponseBodySize
+	jsCollector.MaxBodySize = maxResponseBodySize
+
+	// If debug setup the debugger
+	if debugFlag {
+		pageCollector.SetDebugger(&debug.LogDebugger{})
+	}
 
 	// Set the timeouts for each collector
 	pageCollector.SetRequestTimeout(time.Duration(timeout) * time.Second)
