@@ -41,7 +41,7 @@ func main() {
 		timeout        int
 	)
 	flag.StringVar(&startUrl, "url", "", "The URL where we should start crawling.")
-	flag.IntVar(&depth, "depth", 100, "The maximum limit on the recursion depth of visited URLs. ")
+	flag.IntVar(&depth, "depth", 2, "The maximum limit on the recursion depth of visited URLs. ")
 	flag.Int64Var(&randomDelay, "delay", 2000, "Milliseconds to randomly apply as a delay between requests.")
 	flag.BoolVar(&ignoreQuery, "ignore-query", false, "Strip the query portion of the URL before determining if we've visited it yet.")
 	flag.StringVar(&suppliedProxy, "proxy", "", "The SOCKS5 proxy to utilize (format: socks5://127.0.0.1:8080 OR http://127.0.0.1:8080). Supply multiple proxies by separating them with a comma.")
