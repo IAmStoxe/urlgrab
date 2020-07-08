@@ -17,5 +17,6 @@
 # vendor/
 
 /.idea/
-/.txt
-/.json
+*.txt
+*.json
+
