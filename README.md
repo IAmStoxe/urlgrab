@@ -1,25 +1,21 @@
-# urlgrab
+<h1 align="center">Welcome to urlgrab 👋</h1>
+<p>
+  <a href="https://twitter.com/DevinStokes" target="_blank">
+    <img alt="Twitter: DevinStokes" src="https://img.shields.io/twitter/follow/DevinStokes.svg?style=social" />
+  </a>
+</p>
 
+> A golang utility to spider through a website searching for additional links.
 
-A golang utility to spider through a website searching for additional links. 
+## Install
 
-
-## Installation
-
-###### Options
-1. Clone this repository and build
-2. Download the latest available release from the releases page (if available).
-3. Execute the below go get command
-
-```bash
+```sh
 go get -u github.com/iamstoxe/urlgrab
 ```
 
 ## Usage
 
-```bash
-urlgrab.exe -h
-
+```sh
 Usage of urlgrab.exe:
   -delay int
         Milliseconds to randomly apply as a delay between requests. (default 2000)
@@ -46,12 +42,19 @@ Usage of urlgrab.exe:
 
 ```
 
-###### Note
-urlgrab will only visits links that either share same domain as the specified starting url or are a subdomain of the starting url.
+## Author
 
+👤 **Devin Stokes**
 
-## Contributing
-Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
+* Twitter: [@DevinStokes](https://twitter.com/DevinStokes)
+* Github: [@IAmStoxe](https://github.com/IAmStoxe)
 
-## License
-[MIT](https://choosealicense.com/licenses/mit/)
+## 🤝 Contributing
+
+Contributions, issues and feature requests are welcome!<br />Feel free to check [issues page](https://github.com/IAmStoxe/urlgrab/issue). 
+
+## Show your support
+
+Give a ⭐ if this project helped you!
+
+<a href="https://www.buymeacoffee.com/stoxe" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-white.png" alt="Buy Me A Coffee" style="height: 51px !important;width: 217px !important;" ></a>
