@@ -51,7 +51,7 @@ func main() {
 	flag.BoolVar(&verbose, "verbose", false, "Verbose output")
 	flag.BoolVar(&ignoreSSL, "ignore-ssl", false, "Scrape pages with invalid SSL certificates")
 	flag.IntVar(&timeout, "timeout", 10, "The amount of seconds before a request should timeout.")
-	flag.BoolVar(&useReferer, "use-referer", 10, "Referer sets valid Referer HTTP header to requests from the crawled URL.")
+	flag.BoolVar(&useReferer, "use-referer", false, "Referer sets valid Referer HTTP header to requests from the crawled URL.")
 
 	flag.Parse()
 
