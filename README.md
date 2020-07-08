@@ -20,7 +20,7 @@ Usage of urlgrab.exe:
   -delay int
         Milliseconds to apply as a delay between requests. (default 2000)
   -depth int
-        The maximum limit on the recursion depth of visited URLs.  (default 100)
+        The maximum limit on the recursion depth of visited URLs.  (default 2)
   -ignore-query
         Strip the query portion of the URL before determining if we've visited it yet.
   -ignore-ssl
