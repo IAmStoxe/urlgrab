@@ -20,7 +20,7 @@ Usage of urlgrab.exe:
   -delay int
         Milliseconds to randomly apply as a delay between requests. (default 2000)
   -depth int
-        The  maximum depth to crawl. (default 100)
+        The maximum limit on the recursion depth of visited URLs.  (default 100)
   -ignore-query
         Strip the query portion of the URL before determining if we've visited it yet.
   -ignore-ssl
@@ -37,6 +37,8 @@ Usage of urlgrab.exe:
         The amount of seconds before a request should timeout. (default 10)
   -url string
         The URL where we should start crawling.
+  -use-referer
+        Referer sets valid Referer HTTP header to requests from the crawled URL.
   -verbose
         Verbose output
 
