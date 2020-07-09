@@ -62,7 +62,7 @@ func main() {
 	flag.Int64Var(&randomDelay, "delay", 2000, "Milliseconds to randomly apply as a delay between requests.")
 	flag.BoolVar(&ignoreQuery, "ignore-query", false, "Strip the query portion of the URL before determining if we've visited it yet.")
 	flag.StringVar(&suppliedProxy, "proxy", "", "The SOCKS5 proxy to utilize (format: socks5://127.0.0.1:8080 OR http://127.0.0.1:8080).\nSupply multiple proxies by separating them with a comma.")
-	flag.StringVar(&userAgent, "userAgent", "", "A user Agent such as (Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0).")
+	flag.StringVar(&userAgent, "user-agent", "", "A user agent such as (Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0).")
 	flag.StringVar(&outputAllDirPath, "output-all", "", "The directory where we should store the output files.")
 	flag.StringVar(&outputJsonFilePath, "json", "", "The filename where we should store the output JSON file.")
 	flag.BoolVar(&useRandomAgent, "random-agent", false, "Utilize a random user agent string.")
@@ -142,11 +142,6 @@ func main() {
 		colly.URLFilters(regexp.MustCompile(jsRegexPattern)),
 	)
 
-	if userAgent != "" {
-		pageCollector.UserAgent = userAgent
-		jsCollector.UserAgent = userAgent	
-	}
-	
 	// Specify if we should send HEAD requests before the GET requests
 	pageCollector.CheckHead = noHeadRequest
 	jsCollector.CheckHead = noHeadRequest
@@ -179,6 +174,12 @@ func main() {
 	// If debug setup the debugger
 	if debugFlag {
 		pageCollector.SetDebugger(&debug.LogDebugger{})
+	}
+
+	// If userAgent is supplied, apply it
+	if userAgent != "" {
+		pageCollector.UserAgent = userAgent
+		jsCollector.UserAgent = userAgent
 	}
 
 	// Setup proxy if supplied
