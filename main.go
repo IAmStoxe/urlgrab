@@ -146,9 +146,11 @@ func main() {
 	pageCollector.CheckHead = noHeadRequest
 	jsCollector.CheckHead = noHeadRequest
 
-	// Specify the max response body size we'll allow
-	pageCollector.MaxBodySize = maxResponseBodySize
-	jsCollector.MaxBodySize = maxResponseBodySize
+	// If maxResponseBodySize is anything but default apply it to the collectors
+	if maxResponseBodySize != 10*1024 {
+		pageCollector.MaxBodySize = maxResponseBodySize
+		jsCollector.MaxBodySize = maxResponseBodySize
+	}
 
 	// Set the timeouts for each collector
 	pageCollector.SetRequestTimeout(time.Duration(timeout) * time.Second)
