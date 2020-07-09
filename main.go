@@ -111,8 +111,8 @@ func main() {
 	)
 
 	if userAgent != "" {
-		pageCollector.userAgent = userAgent
-		jsCollector.userAgent = userAgent	
+		pageCollector.UserAgent = userAgent
+		jsCollector.UserAgent = userAgent	
 	}
 	
 	// Specify if we should send HEAD requests before the GET requests
