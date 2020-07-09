@@ -11,6 +11,7 @@ import (
 	"github.com/gocolly/colly/v2/proxy"
 	"github.com/mpvl/unique"
 	"github.com/op/go-logging"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -46,6 +47,7 @@ func main() {
 		outputJsonFilePath  string
 		randomDelay         int64
 		startUrl            string
+		rootDomain          string
 		suppliedProxy       string
 		threadCount         int
 		timeout             int
@@ -54,6 +56,7 @@ func main() {
 		verbose             bool
 	)
 	flag.StringVar(&startUrl, "url", "", "The URL where we should start crawling.")
+	flag.StringVar(&rootDomain, "root-domain", "", "The root domain we should match links against.\nIf not specified it will default to the host of --url.\nExample: --root-domain google.com")
 	flag.IntVar(&depth, "depth", 2, "The maximum limit on the recursion depth of visited URLs. ")
 	flag.Int64Var(&randomDelay, "delay", 2000, "Milliseconds to randomly apply as a delay between requests.")
 	flag.BoolVar(&ignoreQuery, "ignore-query", false, "Strip the query portion of the URL before determining if we've visited it yet.")
@@ -63,7 +66,7 @@ func main() {
 	flag.BoolVar(&useRandomAgent, "random-agent", false, "Utilize a random user agent string.")
 	flag.IntVar(&threadCount, "threads", 5, "The number of threads to utilize.")
 	flag.BoolVar(&verbose, "verbose", false, "Verbose output")
-	flag.BoolVar(&debugFlag, "debugFlag", false, "Extremely verbose debugging output. Useful mainly for development.")
+	flag.BoolVar(&debugFlag, "debug", false, "Extremely verbose debugging output. Useful mainly for development.")
 	flag.BoolVar(&ignoreSSL, "ignore-ssl", false, "Scrape pages with invalid SSL certificates")
 	flag.IntVar(&timeout, "timeout", 10, "The amount of seconds before a request should timeout.")
 	flag.BoolVar(&useReferer, "use-referer", false, "Referer sets valid Referer HTTP header to requests from the crawled URL.")
@@ -74,12 +77,24 @@ func main() {
 
 	setupLogging(verbose)
 
+	// startUrl isn't provided, maybe  is a piped value
+	if len(startUrl) <= 0 {
+		// Get the very last arg
+		lastArg := os.Args[len(os.Args)-1]
+		startUrl = lastArg
+		log.Infof("No startUrl provided. Using piped value: %s", startUrl)
+	}
+
+	// Ensure that a protocol is specified
+	if !strings.HasPrefix(strings.ToUpper(startUrl), strings.ToUpper("HTTP")) {
+		startUrl = "https://" + startUrl
+	}
+
 	// Validate the user passed URL
 	parsedUrl, err := url.Parse(startUrl)
 
 	if err != nil {
-		log.Errorf("Error parsing URL: %s", startUrl)
-		os.Exit(1)
+		log.Fatalf("Error parsing URL: %s", startUrl)
 	}
 
 	log.Infof("Domain: %v", parsedUrl.Host)
@@ -88,7 +103,24 @@ func main() {
 	var pageCollector *colly.Collector = nil
 	var jsCollector *colly.Collector = nil
 
-	regexReplacedHost := strings.Replace(parsedUrl.Host, ".", `\.`, -1)
+	var regexReplacedHost = ""
+
+	// If root domain is specified use it, otherwise use the host from --url
+	if len(rootDomain) > 0 {
+		regexReplacedHost = strings.Replace(rootDomain, ".", `\.`, -1)
+	} else {
+		// rootDomain wasn't supplied so use the root domain as the filter
+		// i.e. if abc.xyz.com is supplied, xyz.com will be the root domain
+		splitHost := strings.Split(parsedUrl.Host, ".")
+		rootDomainNameTld := splitHost[len(splitHost)-1]
+		rootDomainNameWithoutTld := splitHost[len(splitHost)-2]
+		rootDomainNameWithTld := fmt.Sprintf("%s.%s", rootDomainNameWithoutTld, rootDomainNameTld)
+
+		rootDomain = rootDomainNameWithTld
+
+		regexReplacedHost = strings.Replace(rootDomainNameWithTld, ".", `\.`, -1)
+	}
+
 	pageRegexPattern := fmt.Sprintf(`(https?)://[^\s?#/]*%s/?[^\s]*`, regexReplacedHost)
 	jsRegexPattern := fmt.Sprintf(`(https?)://[^\s?#/]*%s/?[^\s]*(\.js[^\s/son]*$)`, regexReplacedHost)
 
@@ -116,30 +148,9 @@ func main() {
 	pageCollector.MaxBodySize = maxResponseBodySize
 	jsCollector.MaxBodySize = maxResponseBodySize
 
-	// If debug setup the debugger
-	if debugFlag {
-		pageCollector.SetDebugger(&debug.LogDebugger{})
-	}
-
 	// Set the timeouts for each collector
 	pageCollector.SetRequestTimeout(time.Duration(timeout) * time.Second)
 	jsCollector.SetRequestTimeout(time.Duration(timeout) * time.Second)
-
-	// If we ignore SSL certs set the default transport
-	// https://github.com/gocolly/colly/issues/422#issuecomment-573483601
-	if ignoreSSL {
-		// Setup the transport
-		tr := &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		}
-
-		// Setup the client with our transport to pass to the collectors
-		client := &http.Client{Transport: tr}
-
-		pageCollector.SetClient(client)
-		jsCollector.SetClient(client)
-
-	}
 
 	// Compile the JS parsing regex
 	// Shamelessly stolen/ported from https://github.com/GerbenJavado/LinkFinder/blob/master/linkfinder.py
@@ -148,6 +159,19 @@ func main() {
 
 	if err != nil {
 		panic(err)
+	}
+
+	// The DomainGlob should be a wildcard so it globally applies
+	domainGlob := fmt.Sprintf("*%s*", rootDomain)
+	pageCollector.Limit(&colly.LimitRule{
+		DomainGlob:  domainGlob,
+		Parallelism: threadCount,
+		RandomDelay: time.Duration(randomDelay) * time.Millisecond,
+	})
+
+	// If debug setup the debugger
+	if debugFlag {
+		pageCollector.SetDebugger(&debug.LogDebugger{})
 	}
 
 	// Setup proxy if supplied
@@ -162,6 +186,7 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
+
 			proxySwitcher = rrps
 		} else {
 			log.Infof("Proxy set to: %s", suppliedProxy)
@@ -178,15 +203,6 @@ func main() {
 		jsCollector.SetProxyFunc(proxySwitcher)
 	}
 
-	splitHost := strings.Split(parsedUrl.Host, ".")
-	rootDomainNameWithoutTld := splitHost[len(splitHost)-2]
-
-	pageCollector.Limit(&colly.LimitRule{
-		DomainGlob:  fmt.Sprintf("*%s.*", rootDomainNameWithoutTld),
-		Parallelism: threadCount,
-		RandomDelay: time.Duration(randomDelay) * time.Millisecond,
-	})
-
 	// Use random user-agent if requested
 	if useRandomAgent {
 		extensions.RandomUserAgent(pageCollector)
@@ -195,11 +211,37 @@ func main() {
 	// Use the referer if requested
 	if useReferer {
 		extensions.Referer(pageCollector)
+		extensions.Referer(jsCollector)
 		// Won't work on the JS collector as you have the od the relevative .Visit()
 	}
 
+	// Setup the default transport we'll use for the collectors
+	tr := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   time.Duration(timeout) * time.Second,
+			KeepAlive: time.Duration(timeout) * time.Second,
+		}).DialContext,
+		MaxIdleConns:          100, // Golang default is 100
+		IdleConnTimeout:       time.Duration(timeout) * time.Second,
+		TLSHandshakeTimeout:   time.Duration(timeout) * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+
+	// If we ignore SSL certs set the default transport
+	// https://github.com/gocolly/colly/issues/422#issuecomment-573483601
+	if ignoreSSL {
+		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	}
+
+	// Setup the client with our transport to pass to the collectors
+	client := &http.Client{Transport: tr}
+
+	pageCollector.SetClient(client)
+	jsCollector.SetClient(client)
+
 	// On every a element which has href attribute call callback
-	pageCollector.OnHTML("a[href]", func(e *colly.HTMLElement) {
+	// Wildcard to match everything - not only <a> tags
+	pageCollector.OnHTML("*[href]", func(e *colly.HTMLElement) {
 
 		link := e.Attr("href")
 
@@ -232,7 +274,11 @@ func main() {
 			foundUrls = append(foundUrls, urlToVisit)
 		}
 
-		e.Request.Visit(urlToVisit)
+		if useReferer {
+			e.Request.Visit(urlToVisit)
+		} else {
+			pageCollector.Visit(urlToVisit)
+		}
 
 	})
 
@@ -264,7 +310,11 @@ func main() {
 			foundUrls = append(foundUrls, urlToVisit)
 			// Pass it to the JS collector
 
-			jsCollector.Visit(urlToVisit)
+			if useReferer {
+				e.Request.Visit(urlToVisit)
+			} else {
+				pageCollector.Visit(urlToVisit)
+			}
 		}
 
 	})
@@ -313,6 +363,7 @@ func main() {
 			//log.Errorf("[Page Collector ERROR] Too Many Requests - Consider lowering threads and/or increasing delay.")
 		default:
 			log.Errorf("[Page Collector ERROR] %s", err.Error())
+
 		}
 	})
 
@@ -411,14 +462,13 @@ func main() {
 		uniqueFoundPath := fmt.Sprintf("%s/unique_found.txt", outputAllDirPath)
 		writeLines(uniqueVisitedPath, uniqueVisitedUrls)
 		writeLines(uniqueFoundPath, uniqueFoundUrls)
-		writeLines(uniqueFoundPath, uniqueFoundUrls)
-		writeLines(uniqueFoundPath, uniqueFoundUrls)
 
 	} else if outputJsonFilePath != "" {
-
-		writeToJsonFile(outputJsonFilePath, results)
-		log.Infof("Output saved to %s", outputJsonFilePath)
-
+		// Don't output an empty file
+		if len(results) > 0 {
+			writeToJsonFile(outputJsonFilePath, results)
+			log.Infof("Output saved to %s", outputJsonFilePath)
+		}
 	}
 
 }
