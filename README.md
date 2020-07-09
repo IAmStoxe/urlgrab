@@ -17,6 +17,8 @@ go get -u github.com/iamstoxe/urlgrab
 
 ```sh
 Usage of urlgrab.exe:
+  -debug
+        Extremely verbose debugging output. Useful mainly for development.
   -delay int
         Milliseconds to randomly apply as a delay between requests. (default 2000)
   -depth int
@@ -27,6 +29,12 @@ Usage of urlgrab.exe:
         Scrape pages with invalid SSL certificates
   -json string
         The filename where we should store the output JSON file.
+  -max-body int
+        The limit of the retrieved response body in kilobytes.
+        0 means unlimited.
+        Supply this value in kilobytes. (i.e. 10 * 1024kb = 10MB) (default 10240)
+  -no-head
+        Do not send HEAD requests prior to GET for pre-validation.
   -output-all string
         The directory where we should store the output files.
   -proxy string
@@ -34,6 +42,10 @@ Usage of urlgrab.exe:
         Supply multiple proxies by separating them with a comma.
   -random-agent
         Utilize a random user agent string.
+  -root-domain string
+        The root domain we should match links against.
+        If not specified it will default to the host of --url.
+        Example: --root-domain google.com
   -threads int
         The number of threads to utilize. (default 5)
   -timeout int
@@ -42,6 +54,8 @@ Usage of urlgrab.exe:
         The URL where we should start crawling.
   -use-referer
         Referer sets valid Referer HTTP header to requests from the crawled URL.
+  -user-agent string
+        A user agent such as (Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0).
   -verbose
         Verbose output
 
