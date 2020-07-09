@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/chromedp/chromedp"
 	"github.com/gocolly/colly/v2"
 	"github.com/gocolly/colly/v2/debug"
 	"github.com/gocolly/colly/v2/extensions"
@@ -12,8 +14,10 @@ import (
 	"github.com/gocolly/colly/v2/queue"
 	"github.com/mpvl/unique"
 	"github.com/op/go-logging"
+	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"regexp"
@@ -23,7 +27,7 @@ import (
 )
 
 // Setup the logging instance
-var log = logging.MustGetLogger("")
+var log = logging.MustGetLogger("urlgrab")
 
 type DomainInfo struct {
 	Host  string   `json:"host"`
@@ -47,32 +51,36 @@ func main() {
 		outputAllDirPath    string
 		outputJsonFilePath  string
 		randomDelay         int64
-		startUrl            string
+		renderJavaScript    bool
+		renderTimeout       int
 		rootDomain          string
+		startUrl            string
 		suppliedProxy       string
-		userAgent           string
 		threadCount         int
 		timeout             int
 		useRandomAgent      bool
+		userAgent           string
 		verbose             bool
 	)
-	flag.StringVar(&startUrl, "url", "", "The URL where we should start crawling.")
-	flag.StringVar(&rootDomain, "root-domain", "", "The root domain we should match links against.\nIf not specified it will default to the host of --url.\nExample: --root-domain google.com")
-	flag.IntVar(&depth, "depth", 2, "The maximum limit on the recursion depth of visited URLs. ")
-	flag.Int64Var(&randomDelay, "delay", 2000, "Milliseconds to randomly apply as a delay between requests.")
+	flag.BoolVar(&debugFlag, "debug", false, "Extremely verbose debugging output. Useful mainly for development.")
 	flag.BoolVar(&ignoreQuery, "ignore-query", false, "Strip the query portion of the URL before determining if we've visited it yet.")
-	flag.StringVar(&suppliedProxy, "proxy", "", "The SOCKS5 proxy to utilize (format: socks5://127.0.0.1:8080 OR http://127.0.0.1:8080).\nSupply multiple proxies by separating them with a comma.")
-	flag.StringVar(&userAgent, "user-agent", "", "A user agent such as (Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0).")
+	flag.BoolVar(&ignoreSSL, "ignore-ssl", false, "Scrape pages with invalid SSL certificates")
+	flag.BoolVar(&noHeadRequest, "no-head", false, "Do not send HEAD requests prior to GET for pre-validation.")
+	flag.BoolVar(&renderJavaScript, "render-js", false, "Determines if we utilize a headless chrome instance to render javascript.")
+	flag.BoolVar(&useRandomAgent, "random-agent", false, "Utilize a random user agent string.")
+	flag.BoolVar(&verbose, "verbose", false, "Verbose output")
+	flag.Int64Var(&randomDelay, "delay", 2000, "Milliseconds to randomly apply as a delay between requests.")
+	flag.IntVar(&depth, "depth", 2, "The maximum limit on the recursion depth of visited URLs. ")
+	flag.IntVar(&maxResponseBodySize, "max-body", 10*1024, "The limit of the retrieved response body in kilobytes.\n0 means unlimited.\nSupply this value in kilobytes. (i.e. 10 * 1024kb = 10MB)")
+	flag.IntVar(&threadCount, "threads", 5, "The number of threads to utilize.")
+	flag.IntVar(&timeout, "timeout", 10, "The amount of seconds before a request should timeout.")
+	flag.IntVar(&renderTimeout, "js-timeout", 10, "The amount of seconds before a request to render javascript should timeout.")
 	flag.StringVar(&outputAllDirPath, "output-all", "", "The directory where we should store the output files.")
 	flag.StringVar(&outputJsonFilePath, "json", "", "The filename where we should store the output JSON file.")
-	flag.BoolVar(&useRandomAgent, "random-agent", false, "Utilize a random user agent string.")
-	flag.IntVar(&threadCount, "threads", 5, "The number of threads to utilize.")
-	flag.BoolVar(&verbose, "verbose", false, "Verbose output")
-	flag.BoolVar(&debugFlag, "debug", false, "Extremely verbose debugging output. Useful mainly for development.")
-	flag.BoolVar(&ignoreSSL, "ignore-ssl", false, "Scrape pages with invalid SSL certificates")
-	flag.IntVar(&timeout, "timeout", 10, "The amount of seconds before a request should timeout.")
-	flag.BoolVar(&noHeadRequest, "no-head", false, "Do not send HEAD requests prior to GET for pre-validation.")
-	flag.IntVar(&maxResponseBodySize, "max-body", 10*1024, "The limit of the retrieved response body in kilobytes.\n0 means unlimited.\nSupply this value in kilobytes. (i.e. 10 * 1024kb = 10MB)")
+	flag.StringVar(&rootDomain, "root-domain", "", "The root domain we should match links against.\nIf not specified it will default to the host of --url.\nExample: --root-domain google.com")
+	flag.StringVar(&startUrl, "url", "", "The URL where we should start crawling.")
+	flag.StringVar(&suppliedProxy, "proxy", "", "The SOCKS5 proxy to utilize (format: socks5://127.0.0.1:8080 OR http://127.0.0.1:8080).\nSupply multiple proxies by separating them with a comma.")
+	flag.StringVar(&userAgent, "user-agent", "", "A user agent such as (Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0).")
 
 	flag.Parse()
 
@@ -107,7 +115,7 @@ func main() {
 	var regexReplacedHost = ""
 
 	// If root domain is specified use it, otherwise use the host from --url
-	if len(rootDomain) > 0 {
+	if rootDomain != "" {
 		regexReplacedHost = strings.Replace(rootDomain, ".", `\.`, -1)
 	} else {
 		// rootDomain wasn't supplied so use the root domain as the filter
@@ -250,6 +258,13 @@ func main() {
 
 	pageCollector.SetClient(client)
 	jsCollector.SetClient(client)
+
+	if renderJavaScript {
+		// If renderJavascript, pass the response's body to the renderer and then replace the body for .OnHTML to handle.
+		pageCollector.OnResponse(func(r *colly.Response) {
+			r.Body = []byte(renderHTML(string(r.Body), renderTimeout))
+		})
+	}
 
 	// On every a element which has href attribute call callback
 	// Wildcard to match everything - not only <a> tags
@@ -402,6 +417,7 @@ func main() {
 	})
 
 	// On initial response execute the callback
+	// jsCollector won't need to parse HTML
 	jsCollector.OnResponse(func(r *colly.Response) {
 
 		regexLinks := urlParsingRegex.FindAll(r.Body, -1)
@@ -565,4 +581,54 @@ func arrayContains(arr []string, str string) bool {
 		}
 	}
 	return false
+}
+
+func writeHTML(content string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		io.WriteString(w, strings.TrimSpace(content))
+	})
+}
+
+func renderHTML(raw string, timeout int) string {
+	// Strictly for benchmarking
+	startTime := time.Now()
+
+	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(),
+		chromedp.Flag("headless", true),
+		chromedp.Flag("ignore-certificate-errors", true),
+	)
+	defer cancel()
+
+	// create chrome instance
+	ctx, cancel := chromedp.NewContext(allocCtx,
+		chromedp.WithErrorf(log.Errorf),
+		chromedp.WithBrowserOption(),
+	)
+	defer cancel()
+
+	// create a timeout for rendering the page
+	ctx, cancel = context.WithTimeout(ctx, time.Duration(timeout))
+
+	defer cancel()
+
+	ts := httptest.NewServer(writeHTML(raw))
+	defer ts.Close()
+
+	// navigate to a page, and get it's entire HTML
+	var outerHtml string
+
+	if err := chromedp.Run(ctx,
+		chromedp.Navigate(ts.URL),
+		chromedp.WaitReady("body"),
+		chromedp.OuterHTML("html", &outerHtml),
+	); err != nil {
+		log.Error(err)
+		panic(err)
+	}
+
+	endTime := time.Now()
+	totalSeconds := endTime.Sub(startTime).Seconds()
+	log.Debugf("Rendering took %v seconds", totalSeconds)
+	return outerHtml
 }
