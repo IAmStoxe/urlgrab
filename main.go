@@ -9,6 +9,7 @@ import (
 	"github.com/gocolly/colly/v2/debug"
 	"github.com/gocolly/colly/v2/extensions"
 	"github.com/gocolly/colly/v2/proxy"
+	"github.com/gocolly/colly/v2/queue"
 	"github.com/mpvl/unique"
 	"github.com/op/go-logging"
 	"net"
@@ -53,7 +54,6 @@ func main() {
 		threadCount         int
 		timeout             int
 		useRandomAgent      bool
-		useReferer          bool
 		verbose             bool
 	)
 	flag.StringVar(&startUrl, "url", "", "The URL where we should start crawling.")
@@ -71,7 +71,6 @@ func main() {
 	flag.BoolVar(&debugFlag, "debug", false, "Extremely verbose debugging output. Useful mainly for development.")
 	flag.BoolVar(&ignoreSSL, "ignore-ssl", false, "Scrape pages with invalid SSL certificates")
 	flag.IntVar(&timeout, "timeout", 10, "The amount of seconds before a request should timeout.")
-	flag.BoolVar(&useReferer, "use-referer", false, "Referer sets valid Referer HTTP header to requests from the crawled URL.")
 	flag.BoolVar(&noHeadRequest, "no-head", false, "Do not send HEAD requests prior to GET for pre-validation.")
 	flag.IntVar(&maxResponseBodySize, "max-body", 10*1024, "The limit of the retrieved response body in kilobytes.\n0 means unlimited.\nSupply this value in kilobytes. (i.e. 10 * 1024kb = 10MB)")
 
@@ -128,15 +127,25 @@ func main() {
 
 	log.Debugf("Regex: %s", pageRegexPattern)
 
+	// create a page request queue with threadCount consumer threads
+	pageQueue, _ := queue.New(
+		threadCount, // Number of consumer threads
+		&queue.InMemoryQueueStorage{MaxSize: 10000}, // Use default queue storage
+	)
+
+	// create a page request queue with threadCount consumer threads
+	jsQueue, _ := queue.New(
+		threadCount, // Number of consumer threads
+		&queue.InMemoryQueueStorage{MaxSize: 10000}, // Use default queue storage
+	)
+
 	pageCollector = colly.NewCollector(
-		colly.Async(true),
 		colly.IgnoreRobotsTxt(),
 		colly.MaxDepth(depth),
 		colly.URLFilters(regexp.MustCompile(pageRegexPattern)),
 	)
 
 	jsCollector = colly.NewCollector(
-		colly.Async(true),
 		colly.IgnoreRobotsTxt(),
 		colly.MaxDepth(depth),
 		colly.URLFilters(regexp.MustCompile(jsRegexPattern)),
@@ -218,13 +227,6 @@ func main() {
 		extensions.RandomUserAgent(pageCollector)
 	}
 
-	// Use the referer if requested
-	if useReferer {
-		extensions.Referer(pageCollector)
-		extensions.Referer(jsCollector)
-		// Won't work on the JS collector as you have the od the relevative .Visit()
-	}
-
 	// Setup the default transport we'll use for the collectors
 	tr := &http.Transport{
 		DialContext: (&net.Dialer{
@@ -284,11 +286,7 @@ func main() {
 			foundUrls = append(foundUrls, urlToVisit)
 		}
 
-		if useReferer {
-			e.Request.Visit(urlToVisit)
-		} else {
-			pageCollector.Visit(urlToVisit)
-		}
+		pageQueue.AddURL(urlToVisit)
 
 	})
 
@@ -320,12 +318,9 @@ func main() {
 			foundUrls = append(foundUrls, urlToVisit)
 			// Pass it to the JS collector
 
-			if useReferer {
-				e.Request.Visit(urlToVisit)
-			} else {
-				pageCollector.Visit(urlToVisit)
-			}
 		}
+		// Add all pages to the queue as the queue handles filtering
+		pageQueue.AddURL(urlToVisit)
 
 	})
 
@@ -431,7 +426,7 @@ func main() {
 
 			// We submit all links we find and the collector will handle the parsing based on our URL filter
 			// We submit them back to the main collector so it's parsed like any other page
-			pageCollector.Visit(absoluteURL)
+			pageQueue.AddURL(absoluteURL)
 		}
 
 		log.Debugf("[JS Parser] Parsed %v urls from %s", len(regexLinks), r.Request.URL.String())
@@ -448,6 +443,10 @@ func main() {
 
 	// Start scraping on our start URL
 	pageCollector.Visit(startUrl)
+
+	// Start both queues
+	pageQueue.Run(pageCollector)
+	jsQueue.Run(jsCollector)
 
 	// Async means we must .Wait() on each Collector
 	pageCollector.Wait()
