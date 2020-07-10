@@ -86,14 +86,6 @@ func main() {
 
 	setupLogging(verbose)
 
-	// startUrl isn't provided, maybe  is a piped value
-	if len(startUrl) <= 0 {
-		// Get the very last arg
-		lastArg := os.Args[len(os.Args)-1]
-		startUrl = lastArg
-		log.Infof("No startUrl provided. Using piped value: %s", startUrl)
-	}
-
 	// Ensure that a protocol is specified
 	if !strings.HasPrefix(strings.ToUpper(startUrl), strings.ToUpper("HTTP")) {
 		startUrl = "https://" + startUrl
