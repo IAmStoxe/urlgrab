@@ -54,6 +54,7 @@ func main() {
 
 	// Params
 	var (
+		cacheDirectory      string
 		debugFlag           bool
 		depth               int
 		headlessBrowser     bool
@@ -90,6 +91,7 @@ func main() {
 	flag.IntVar(&renderTimeout, "js-timeout", defaultJsTimeout, "The amount of seconds before a request to render javascript should timeout.")
 	flag.IntVar(&threadCount, "threads", defaultThreadCount, "The number of threads to utilize.")
 	flag.IntVar(&timeout, "timeout", defaultHttpTimeout, "The amount of seconds before a request should timeout.")
+	flag.StringVar(&cacheDirectory, "cache-dir", "", "Specify a directory to utilize caching. Works between sessions as well.")
 	flag.StringVar(&outputAllDirPath, "output-all", "", "The directory where we should store the output files.")
 	flag.StringVar(&outputJsonFilePath, "json", "", "The filename where we should store the output JSON file.")
 	flag.StringVar(&rootDomain, "root-domain", "", "The root domain we should match links against.\nIf not specified it will default to the host of --url.\nExample: --root-domain google.com")
@@ -188,6 +190,10 @@ func main() {
 
 	pageCollector.ID = 1
 	jsCollector.ID = 2
+
+	if cacheDirectory != "" {
+		pageCollector.CacheDir = cacheDirectory
+	}
 
 	// Specify if we should send HEAD requests before the GET requests
 	if noHeadRequest {
@@ -372,8 +378,7 @@ func main() {
 		if strings.HasSuffix(r.URL.Path, ".js") {
 			err2 := jsCollector.Visit(r.URL.String())
 			if err2 != nil {
-				log.Error("Failed to submit supposed .js file to jsCollector!")
-				log.Fatal(err2)
+				log.Errorf("Failed to submit (%s) file to jsCollector!", r.URL.String())
 			}
 
 			// Send to jsCollector
@@ -385,7 +390,7 @@ func main() {
 			matchString := re.MatchString(r.URL.Path)
 			if matchString {
 				// We don't need to call those items
-				log.Debug("Aborting pageCollector request due to blacklisted filetype.")
+				log.Debug("[Page Collector] Aborting request due to blacklisted file type.")
 				r.Abort()
 				return
 			}
