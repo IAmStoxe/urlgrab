@@ -608,7 +608,7 @@ func renderHTML(raw string, timeout int) string {
 	defer cancel()
 
 	// create a timeout for rendering the page
-	ctx, cancel = context.WithTimeout(ctx, time.Duration(timeout))
+	ctx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 
 	defer cancel()
 
@@ -620,11 +620,9 @@ func renderHTML(raw string, timeout int) string {
 
 	if err := chromedp.Run(ctx,
 		chromedp.Navigate(ts.URL),
-		chromedp.WaitReady("body"),
 		chromedp.OuterHTML("html", &outerHtml),
 	); err != nil {
 		log.Error(err)
-		panic(err)
 	}
 
 	endTime := time.Now()

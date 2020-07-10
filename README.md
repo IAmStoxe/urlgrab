@@ -5,13 +5,19 @@
   </a>
 </p>
 
-> A golang utility to spider through a website searching for additional links.
+> A golang utility to spider through a website searching for additional links with support for JavaScript rendering.
 
 ## Install
 
 ```sh
 go get -u github.com/iamstoxe/urlgrab
 ```
+
+## Features
+
+* Customizable Parallelism
+* Ability to Render JavaScript <sup>(including Single Page Applications such as Angular and React)</sup>
+
 
 ## Usage
 
