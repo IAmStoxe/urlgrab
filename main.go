@@ -40,10 +40,21 @@ func main() {
 	var visitedUrls []string
 	var results []DomainInfo
 
+	const (
+		// Default values for flags
+		defaultHttpTimeout = 10
+		defaultJsTimeout   = 10
+		defaultMaxBodySize = 10 * 1024
+		defaultMaxDepth    = 2
+		defaultRandomDelay = 2000
+		defaultThreadCount = 5
+	)
+
 	// Params
 	var (
 		debugFlag           bool
 		depth               int
+		headlessBrowser     bool
 		ignoreQuery         bool
 		ignoreSSL           bool
 		maxResponseBodySize int
@@ -63,18 +74,19 @@ func main() {
 		verbose             bool
 	)
 	flag.BoolVar(&debugFlag, "debug", false, "Extremely verbose debugging output. Useful mainly for development.")
+	flag.BoolVar(&headlessBrowser, "headless", true, "If true the browser will be displayed while crawling.\nNote: Requires render-js flag\nNote: Usage to show browser: --headless=false")
 	flag.BoolVar(&ignoreQuery, "ignore-query", false, "Strip the query portion of the URL before determining if we've visited it yet.")
 	flag.BoolVar(&ignoreSSL, "ignore-ssl", false, "Scrape pages with invalid SSL certificates")
 	flag.BoolVar(&noHeadRequest, "no-head", false, "Do not send HEAD requests prior to GET for pre-validation.")
 	flag.BoolVar(&renderJavaScript, "render-js", false, "Determines if we utilize a headless chrome instance to render javascript.")
 	flag.BoolVar(&useRandomAgent, "random-agent", false, "Utilize a random user agent string.")
 	flag.BoolVar(&verbose, "verbose", false, "Verbose output")
-	flag.Int64Var(&randomDelay, "delay", 2000, "Milliseconds to randomly apply as a delay between requests.")
-	flag.IntVar(&depth, "depth", 2, "The maximum limit on the recursion depth of visited URLs. ")
-	flag.IntVar(&maxResponseBodySize, "max-body", 10*1024, "The limit of the retrieved response body in kilobytes.\n0 means unlimited.\nSupply this value in kilobytes. (i.e. 10 * 1024kb = 10MB)")
-	flag.IntVar(&threadCount, "threads", 5, "The number of threads to utilize.")
-	flag.IntVar(&timeout, "timeout", 10, "The amount of seconds before a request should timeout.")
-	flag.IntVar(&renderTimeout, "js-timeout", 10, "The amount of seconds before a request to render javascript should timeout.")
+	flag.Int64Var(&randomDelay, "delay", defaultRandomDelay, "Milliseconds to randomly apply as a delay between requests.")
+	flag.IntVar(&depth, "depth", defaultMaxDepth, "The maximum limit on the recursion depth of visited URLs. ")
+	flag.IntVar(&maxResponseBodySize, "max-body", defaultMaxBodySize, "The limit of the retrieved response body in kilobytes.\n0 means unlimited.\nSupply this value in kilobytes. (i.e. 10 * 1024kb = 10MB)")
+	flag.IntVar(&renderTimeout, "js-timeout", defaultJsTimeout, "The amount of seconds before a request to render javascript should timeout.")
+	flag.IntVar(&threadCount, "threads", defaultThreadCount, "The number of threads to utilize.")
+	flag.IntVar(&timeout, "timeout", defaultHttpTimeout, "The amount of seconds before a request should timeout.")
 	flag.StringVar(&outputAllDirPath, "output-all", "", "The directory where we should store the output files.")
 	flag.StringVar(&outputJsonFilePath, "json", "", "The filename where we should store the output JSON file.")
 	flag.StringVar(&rootDomain, "root-domain", "", "The root domain we should match links against.\nIf not specified it will default to the host of --url.\nExample: --root-domain google.com")
@@ -156,7 +168,7 @@ func main() {
 	jsCollector.CheckHead = noHeadRequest
 
 	// If maxResponseBodySize is anything but default apply it to the collectors
-	if maxResponseBodySize != 10*1024 {
+	if maxResponseBodySize != defaultMaxBodySize {
 		pageCollector.MaxBodySize = maxResponseBodySize
 		jsCollector.MaxBodySize = maxResponseBodySize
 	}
