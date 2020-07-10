@@ -17,7 +17,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"os"
 	"regexp"
@@ -28,6 +27,9 @@ import (
 
 // Setup the logging instance
 var log = logging.MustGetLogger("urlgrab")
+
+var globalContext context.Context
+var globalCancel context.CancelFunc
 
 type DomainInfo struct {
 	Host  string   `json:"host"`
@@ -73,6 +75,7 @@ func main() {
 		userAgent           string
 		verbose             bool
 	)
+
 	flag.BoolVar(&debugFlag, "debug", false, "Extremely verbose debugging output. Useful mainly for development.")
 	flag.BoolVar(&headlessBrowser, "headless", true, "If true the browser will be displayed while crawling.\nNote: Requires render-js flag\nNote: Usage to show browser: --headless=false")
 	flag.BoolVar(&ignoreQuery, "ignore-query", false, "Strip the query portion of the URL before determining if we've visited it yet.")
@@ -108,6 +111,7 @@ func main() {
 
 	if err != nil {
 		log.Fatalf("Error parsing URL: %s", startUrl)
+		panic(err)
 	}
 
 	log.Infof("Domain: %v", parsedUrl.Host)
@@ -145,12 +149,6 @@ func main() {
 		&queue.InMemoryQueueStorage{MaxSize: 10000}, // Use default queue storage
 	)
 
-	// create a page request queue with threadCount consumer threads
-	jsQueue, _ := queue.New(
-		threadCount, // Number of consumer threads
-		&queue.InMemoryQueueStorage{MaxSize: 10000}, // Use default queue storage
-	)
-
 	pageCollector = colly.NewCollector(
 		colly.IgnoreRobotsTxt(),
 		colly.MaxDepth(depth),
@@ -158,20 +156,11 @@ func main() {
 	)
 
 	jsCollector = colly.NewCollector(
+		colly.Async(true),
 		colly.IgnoreRobotsTxt(),
 		colly.MaxDepth(depth),
 		colly.URLFilters(regexp.MustCompile(jsRegexPattern)),
 	)
-
-	// Specify if we should send HEAD requests before the GET requests
-	pageCollector.CheckHead = noHeadRequest
-	jsCollector.CheckHead = noHeadRequest
-
-	// If maxResponseBodySize is anything but default apply it to the collectors
-	if maxResponseBodySize != defaultMaxBodySize {
-		pageCollector.MaxBodySize = maxResponseBodySize
-		jsCollector.MaxBodySize = maxResponseBodySize
-	}
 
 	// Set the timeouts for each collector
 	pageCollector.SetRequestTimeout(time.Duration(timeout) * time.Second)
@@ -179,20 +168,38 @@ func main() {
 
 	// Compile the JS parsing regex
 	// Shamelessly stolen/ported from https://github.com/GerbenJavado/LinkFinder/blob/master/linkfinder.py
-	urlParsingPattern := `(?:"|')(((?:[a-zA-Z]{1,10}://|//)[^"'/]{1,}\.[a-zA-Z]{2,}[^"']{0,})|((?:/|\.\./|\./)[^"'><,;| *()(%%$^/\\\[\]][^"'><,;|()]{1,})|([a-zA-Z0-9_\-/]{1,}/[a-zA-Z0-9_\-/]{1,}\.(?:[a-zA-Z]{1,4}|action)(?:[\?|#][^"|']{0,}|))|([a-zA-Z0-9_\-/]{1,}/[a-zA-Z0-9_\-/]{3,}(?:[\?|#][^"|']{0,}|))|([a-zA-Z0-9_\-]{1,}\.(?:php|asp|aspx|jsp|json|action|html|js|txt|xml)(?:[\?|#][^"|']{0,}|)))(?:"|')`
-	urlParsingRegex, err := regexp.Compile(urlParsingPattern)
+	var urlParsingPattern = `(?:"|')(((?:[a-zA-Z]{1,10}://|//)[^"'/]{1,}\.[a-zA-Z]{2,}[^"']{0,})|((?:/|\.\./|\./)[^"'><,;| *()(%%$^/\\\[\]][^"'><,;|()]{1,})|([a-zA-Z0-9_\-/]{1,}/[a-zA-Z0-9_\-/]{1,}\.(?:[a-zA-Z]{1,4}|action)(?:[\?|#][^"|']{0,}|))|([a-zA-Z0-9_\-/]{1,}/[a-zA-Z0-9_\-/]{3,}(?:[\?|#][^"|']{0,}|))|([a-zA-Z0-9_\-]{1,}\.(?:php|asp|aspx|jsp|json|action|html|js|txt|xml)(?:[\?|#][^"|']{0,}|)))(?:"|')`
+	var urlParsingRegex *regexp.Regexp
+
+	urlParsingRegex, err = regexp.Compile(urlParsingPattern)
 
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	// The DomainGlob should be a wildcard so it globally applies
 	domainGlob := fmt.Sprintf("*%s*", rootDomain)
+
 	pageCollector.Limit(&colly.LimitRule{
 		DomainGlob:  domainGlob,
 		Parallelism: threadCount,
 		RandomDelay: time.Duration(randomDelay) * time.Millisecond,
 	})
+
+	pageCollector.ID = 1
+	jsCollector.ID = 2
+
+	// Specify if we should send HEAD requests before the GET requests
+	if noHeadRequest {
+		pageCollector.CheckHead = false
+		jsCollector.CheckHead = false
+	}
+
+	// If maxResponseBodySize is anything but default apply it to the collectors
+	if maxResponseBodySize != defaultMaxBodySize {
+		pageCollector.MaxBodySize = maxResponseBodySize
+		jsCollector.MaxBodySize = maxResponseBodySize
+	}
 
 	// If debug setup the debugger
 	if debugFlag {
@@ -205,68 +212,53 @@ func main() {
 		jsCollector.UserAgent = userAgent
 	}
 
-	// Setup proxy if supplied
-	if suppliedProxy != "" {
-		var proxySwitcher colly.ProxyFunc
-
-		// If more than one proxy was supplied
-		if strings.Contains(suppliedProxy, ",") {
-			proxies := strings.Split(suppliedProxy, ",")
-			log.Infof("Proxies loaded: %v", len(proxies))
-			rrps, err := proxy.RoundRobinProxySwitcher(proxies...)
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			proxySwitcher = rrps
-		} else {
-			log.Infof("Proxy set to: %s", suppliedProxy)
-			rrps, err := proxy.RoundRobinProxySwitcher(suppliedProxy, suppliedProxy)
-
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			proxySwitcher = rrps
-		}
-
-		pageCollector.SetProxyFunc(proxySwitcher)
-		jsCollector.SetProxyFunc(proxySwitcher)
-	}
-
 	// Use random user-agent if requested
 	if useRandomAgent {
 		extensions.RandomUserAgent(pageCollector)
 	}
 
-	// Setup the default transport we'll use for the collectors
-	tr := &http.Transport{
-		DialContext: (&net.Dialer{
-			Timeout:   time.Duration(timeout) * time.Second,
-			KeepAlive: time.Duration(timeout) * time.Second,
-		}).DialContext,
-		MaxIdleConns:          100, // Golang default is 100
-		IdleConnTimeout:       time.Duration(timeout) * time.Second,
-		TLSHandshakeTimeout:   time.Duration(timeout) * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-	}
-
-	// If we ignore SSL certs set the default transport
-	// https://github.com/gocolly/colly/issues/422#issuecomment-573483601
-	if ignoreSSL {
-		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-	}
-
-	// Setup the client with our transport to pass to the collectors
-	client := &http.Client{Transport: tr}
+	client := getConfiguredHttpClient(timeout, ignoreSSL)
 
 	pageCollector.SetClient(client)
 	jsCollector.SetClient(client)
 
+	// Setup proxy if supplied
+	// NOTE: Must come after .SetClient calls
+	if suppliedProxy != "" {
+
+		proxies := strings.Split(suppliedProxy, ",")
+		log.Infof("Proxies loaded: %v", len(proxies))
+		rrps, err := proxy.RoundRobinProxySwitcher(proxies...)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		pageCollector.SetProxyFunc(rrps)
+		jsCollector.SetProxyFunc(rrps)
+
+	}
+
 	if renderJavaScript {
+		// If we're using a proxy send it to the chrome instance
+		globalContext, globalCancel = getGlobalContext(headlessBrowser, suppliedProxy)
+
+		// Close the main tab when we end the main() function
+		defer globalCancel()
+
 		// If renderJavascript, pass the response's body to the renderer and then replace the body for .OnHTML to handle.
+
 		pageCollector.OnResponse(func(r *colly.Response) {
-			r.Body = []byte(renderHTML(string(r.Body), renderTimeout))
+			// Strictly for benchmarking
+			startTime := time.Now()
+
+			u := r.Request.URL.String()
+			html := getRenderedSource(u)
+
+			endTime := time.Now()
+			totalSeconds := endTime.Sub(startTime).Seconds()
+			log.Debugf("Loading/Rendering of %s took %v seconds", u, totalSeconds)
+
+			r.Body = []byte(html)
 		})
 	}
 
@@ -309,7 +301,7 @@ func main() {
 
 	})
 
-	// Scrape all found remote js files via src attribute
+	// Scrape all found js files via src attribute
 	pageCollector.OnHTML("script[src]", func(e *colly.HTMLElement) {
 
 		link := e.Attr("src")
@@ -336,10 +328,11 @@ func main() {
 		if !arrayContains(foundUrls, urlToVisit) {
 			foundUrls = append(foundUrls, urlToVisit)
 			// Pass it to the JS collector
-
 		}
 		// Add all pages to the queue as the queue handles filtering
-		pageQueue.AddURL(urlToVisit)
+		// Since we're filtering to script tags we send everything to jsQeue
+
+		_ = jsCollector.Visit(urlToVisit)
 
 	})
 
@@ -375,7 +368,36 @@ func main() {
 
 	// Before making a request print "Visiting ..."
 	pageCollector.OnRequest(func(r *colly.Request) {
+
+		if strings.HasSuffix(r.URL.Path, ".js") {
+			err2 := jsCollector.Visit(r.URL.String())
+			if err2 != nil {
+				log.Error("Failed to submit supposed .js file to jsCollector!")
+				log.Fatal(err2)
+			}
+
+			// Send to jsCollector
+			jsCollector.Visit(r.URL.String())
+			r.Abort()
+
+		} else {
+			var re = regexp.MustCompile(`(?m).*?\.*(jpg|png|gif|webp|tiff|psd|raw|bmp|heif|ico|css|pdf)(\?.*?|)$`)
+			matchString := re.MatchString(r.URL.Path)
+			if matchString {
+				// We don't need to call those items
+				log.Debug("Aborting pageCollector request due to blacklisted filetype.")
+				r.Abort()
+				return
+			}
+
+		}
+
 		log.Debugf("[Page Collector] Visiting %s", r.URL.String())
+	})
+
+	// Page is completely done getting scraped
+	pageCollector.OnScraped(func(r *colly.Response) {
+		//
 	})
 
 	// On error execute the callback
@@ -466,7 +488,6 @@ func main() {
 
 	// Start both queues
 	pageQueue.Run(pageCollector)
-	jsQueue.Run(jsCollector)
 
 	// Async means we must .Wait() on each Collector
 	pageCollector.Wait()
@@ -500,6 +521,30 @@ func main() {
 		}
 	}
 
+}
+
+func getConfiguredHttpClient(timeout int, ignoreSSL bool) *http.Client {
+	// Setup the default transport we'll use for the collectors
+	tr := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   time.Duration(timeout) * time.Second,
+			KeepAlive: time.Duration(timeout) * time.Second,
+		}).DialContext,
+		MaxIdleConns:          100, // Golang default is 100
+		IdleConnTimeout:       time.Duration(timeout) * time.Second,
+		TLSHandshakeTimeout:   time.Duration(timeout) * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+
+	// If we ignore SSL certs set the default transport
+	// https://github.com/gocolly/colly/issues/422#issuecomment-573483601
+	if ignoreSSL {
+		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	}
+
+	// Setup the client with our transport to pass to the collectors
+	client := &http.Client{Transport: tr}
+	return client
 }
 
 func setupLogging(verbose bool) {
@@ -587,50 +632,87 @@ func arrayContains(arr []string, str string) bool {
 	return false
 }
 
-func writeHTML(content string) http.Handler {
+func writeHTML(content string, baseUrl string) http.Handler {
+	// This is so we can detect the page load universally
+	var doneLoadingJs = fmt.Sprintf(`
+<script>
+function onLoaded() {
+        var element = document.createElement("div");
+        element.id = "ShouldOnlyBeHereAfterLoadingCompletely"
+        document.getElementsByTagName('body')[0].appendChild(element);
+    }
+    window.onload = onLoaded();
+
+	document.write("<base href='%s' />");
+</script>`, baseUrl)
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
-		io.WriteString(w, strings.TrimSpace(content))
+		html := fmt.Sprintf("%s\n%s", strings.TrimSpace(content), doneLoadingJs)
+		io.WriteString(w, html)
 	})
 }
 
-func renderHTML(raw string, timeout int) string {
-	// Strictly for benchmarking
-	startTime := time.Now()
+func getRenderedSource(url string) string {
 
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(),
-		chromedp.Flag("headless", true),
-		chromedp.Flag("ignore-certificate-errors", true),
+	// same browser, second tab
+	newCtx, newCtxCancel := chromedp.NewContext(globalContext)
+	defer newCtxCancel()
+
+	// ensure the second tab is created
+	if err := chromedp.Run(newCtx); err != nil {
+		log.Fatal(err)
+		newCtxCancel()
+	}
+
+	// navigate to a page, and get it's entire HTML
+	var outerHtml string
+
+	if err := chromedp.Run(newCtx,
+		chromedp.Navigate(url),
+		chromedp.OuterHTML("html", &outerHtml),
+	); err != nil {
+		log.Error(err)
+	}
+
+	return outerHtml
+}
+
+func getGlobalContext(headless bool, proxy string) (context.Context, context.CancelFunc) {
+	var (
+		allocCtx context.Context
+		cancel   context.CancelFunc
 	)
-	defer cancel()
+	if proxy == "" {
+		allocCtx, cancel = chromedp.NewExecAllocator(context.Background(),
+			chromedp.Flag("headless", headless),
+			chromedp.Flag("ignore-certificate-errors", true),
+			chromedp.Flag("disable-extensions", true),
+			chromedp.Flag("no-first-run", true),
+			chromedp.Flag("no-default-browser-check", true),
+		)
+	} else {
+		allocCtx, cancel = chromedp.NewExecAllocator(context.Background(),
+			chromedp.Flag("headless", headless),
+			chromedp.Flag("ignore-certificate-errors", true),
+			chromedp.Flag("disable-extensions", true),
+			chromedp.Flag("no-first-run", true),
+			chromedp.Flag("no-default-browser-check", true),
+			chromedp.Flag("no-default-browser-check", true),
+			chromedp.Flag("proxy-server", proxy),
+		)
+	}
 
 	// create chrome instance
 	ctx, cancel := chromedp.NewContext(allocCtx,
 		chromedp.WithErrorf(log.Errorf),
 		chromedp.WithBrowserOption(),
 	)
-	defer cancel()
 
-	// create a timeout for rendering the page
-	ctx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
-
-	defer cancel()
-
-	ts := httptest.NewServer(writeHTML(raw))
-	defer ts.Close()
-
-	// navigate to a page, and get it's entire HTML
-	var outerHtml string
-
-	if err := chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL),
-		chromedp.OuterHTML("html", &outerHtml),
-	); err != nil {
-		log.Error(err)
+	// ensure the first tab is created
+	if err := chromedp.Run(ctx); err != nil {
+		log.Fatal(err)
 	}
 
-	endTime := time.Now()
-	totalSeconds := endTime.Sub(startTime).Seconds()
-	log.Debugf("Rendering took %v seconds", totalSeconds)
-	return outerHtml
+	return ctx, cancel
 }
