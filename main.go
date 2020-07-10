@@ -130,8 +130,8 @@ func main() {
 		regexReplacedHost = strings.Replace(rootDomainNameWithTld, ".", `\.`, -1)
 	}
 
-	pageRegexPattern := fmt.Sprintf(`(https?)://[^\s?#/]*%s/?[^\s]*`, regexReplacedHost)
-	jsRegexPattern := fmt.Sprintf(`(https?)://[^\s?#/]*%s/?[^\s]*(\.js[^\s/son]*$)`, regexReplacedHost)
+	pageRegexPattern := fmt.Sprintf(`(https?)://[^\s?#\/]*%s/?[^\s]*`, regexReplacedHost)
+	jsRegexPattern := fmt.Sprintf(`(https?)://[^\s?#\/]*%s/?[^\s]*(\.js[^\s/son]*$)`, regexReplacedHost)
 
 	log.Debugf("Regex: %s", pageRegexPattern)
 
