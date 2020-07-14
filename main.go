@@ -522,7 +522,8 @@ func main() {
 			loadedUrls++
 			pageCollector.Visit(u.String())
 		}
-		log.Debugf("Loaded %v valid urls out of a total %v from the supplied file.")
+		log.Debugf("Loaded %v valid urls out of a total %v from the supplied file.", loadedUrls, totalUrls)
+
 	} else if startUrl != "" {
 		pageCollector.Visit(startUrl)
 	} else {
@@ -534,7 +535,7 @@ func main() {
 	pageQueue.Run(pageCollector)
 
 	// Async means we must .Wait() on each Collector
-	pageCollector.Wait()
+	//pageCollector.Wait()
 	jsCollector.Wait()
 
 	// Output
