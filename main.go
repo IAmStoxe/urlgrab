@@ -163,6 +163,7 @@ func main() {
 	)
 
 	pageCollector = colly.NewCollector(
+		colly.Async(true),
 		colly.IgnoreRobotsTxt(),
 		colly.MaxDepth(depth),
 		colly.URLFilters(regexp.MustCompile(pageRegexPattern)),
