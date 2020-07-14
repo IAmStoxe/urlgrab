@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -72,6 +73,7 @@ func main() {
 		suppliedProxy       string
 		threadCount         int
 		timeout             int
+		urlsPath            string
 		useRandomAgent      bool
 		userAgent           string
 		verbose             bool
@@ -97,12 +99,17 @@ func main() {
 	flag.StringVar(&rootDomain, "root-domain", "", "The root domain we should match links against.\nIf not specified it will default to the host of --url.\nExample: --root-domain google.com")
 	flag.StringVar(&startUrl, "url", "", "The URL where we should start crawling.")
 	flag.StringVar(&suppliedProxy, "proxy", "", "The SOCKS5 proxy to utilize (format: socks5://127.0.0.1:8080 OR http://127.0.0.1:8080).\nSupply multiple proxies by separating them with a comma.")
+	flag.StringVar(&urlsPath, "urls", "", "A user agent such as (Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0).")
 	flag.StringVar(&userAgent, "user-agent", "", "A user agent such as (Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0).")
 
 	flag.Parse()
 
 	setupLogging(verbose)
 
+	if urlsPath != "" && rootDomain == "" {
+		// If loading a bulk file you must provide the rootDomain flag
+		log.Fatal("If using bulk loading you must manually supply the root-domain flag!")
+	}
 	// Ensure that a protocol is specified
 	if !strings.HasPrefix(strings.ToUpper(startUrl), strings.ToUpper("HTTP")) {
 		startUrl = "https://" + startUrl
@@ -131,6 +138,10 @@ func main() {
 		// rootDomain wasn't supplied so use the root domain as the filter
 		// i.e. if abc.xyz.com is supplied, xyz.com will be the root domain
 		splitHost := strings.Split(parsedUrl.Host, ".")
+		if len(splitHost) == 0 {
+			// Failed to parse
+			log.Fatal("Failed to splitHost from %s", parsedUrl.Host)
+		}
 		rootDomainNameTld := splitHost[len(splitHost)-1]
 		rootDomainNameWithoutTld := splitHost[len(splitHost)-2]
 		rootDomainNameWithTld := fmt.Sprintf("%s.%s", rootDomainNameWithoutTld, rootDomainNameTld)
@@ -491,8 +502,33 @@ func main() {
 		}
 	}
 
-	// Start scraping on our start URL
-	pageCollector.Visit(startUrl)
+	// If a file path to load urls was supplied load them and visit each
+	// otherwise just visit the given start url
+	if urlsPath != "" {
+		lines, err := readLines(urlsPath)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		loadedUrls, totalUrls := 0, 0
+
+		for _, line := range lines {
+			totalUrls++
+			u, err := url.Parse(line)
+			if err != nil {
+				log.Errorf("Failed to parse %s as a url", line)
+				continue
+			}
+			loadedUrls++
+			pageCollector.Visit(u.String())
+		}
+		log.Debugf("Loaded %v valid urls out of a total %v from the supplied file.")
+	} else if startUrl != "" {
+		pageCollector.Visit(startUrl)
+	} else {
+		// Neither startUrl or urlsPath were supplied.
+		log.Fatal("You must supply either a starting url or a file path!")
+	}
 
 	// Start both queues
 	pageQueue.Run(pageCollector)
@@ -629,6 +665,23 @@ func writeLines(outputPath string, data []string) {
 		panic(err)
 		return
 	}
+}
+
+// readLines reads a whole file into memory
+// and returns a slice of its lines.
+func readLines(path string) ([]string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var lines []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	return lines, scanner.Err()
 }
 
 func arrayContains(arr []string, str string) bool {
