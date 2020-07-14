@@ -374,7 +374,7 @@ func main() {
 
 	// Before making a request print "Visiting ..."
 	pageCollector.OnRequest(func(r *colly.Request) {
-
+		// If it's a javascript file, ensure we pass it to the proper connector
 		if strings.HasSuffix(r.URL.Path, ".js") {
 			err2 := jsCollector.Visit(r.URL.String())
 			if err2 != nil {
@@ -383,9 +383,12 @@ func main() {
 
 			// Send to jsCollector
 			jsCollector.Visit(r.URL.String())
-			r.Abort()
 
+			// Cancel the request to ensure we don't process it on this collecotr
+			r.Abort()
+			return
 		} else {
+			// Is it an image or similar? Don't request it.
 			var re = regexp.MustCompile(`(?m).*?\.*(jpg|png|gif|webp|tiff|psd|raw|bmp|heif|ico|css|pdf)(\?.*?|)$`)
 			matchString := re.MatchString(r.URL.Path)
 			if matchString {
@@ -594,8 +597,8 @@ func writeToJsonFile(outputPath string, data interface{}) {
 
 	_, err = f.WriteString(string(jsonData))
 	if err != nil {
-		panic(err)
 		f.Close()
+		panic(err)
 		return
 	}
 
@@ -615,8 +618,8 @@ func writeLines(outputPath string, data []string) {
 	for i := 0; i < len(data); i++ {
 		_, err := f.WriteString(fmt.Sprintf("%s\n", data[i]))
 		if err != nil {
-			panic(err)
 			f.Close()
+			panic(err)
 			return
 		}
 	}
@@ -666,8 +669,8 @@ func getRenderedSource(url string) string {
 
 	// ensure the second tab is created
 	if err := chromedp.Run(newCtx); err != nil {
-		log.Fatal(err)
 		newCtxCancel()
+		log.Fatal(err)
 	}
 
 	// navigate to a page, and get it's entire HTML
