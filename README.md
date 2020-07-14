@@ -69,7 +69,8 @@ Usage of urlgrab:
   -url string
         The URL where we should start crawling.
   -urls string
-        A user agent such as (Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0).
+        A file path that contains a list of urls to supply as starting urls.
+        Requires --root-domain flag.
   -user-agent string
         A user agent such as (Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0).
   -verbose
