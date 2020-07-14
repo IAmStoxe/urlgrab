@@ -68,6 +68,8 @@ Usage of urlgrab:
         The amount of seconds before a request should timeout. (default 10)
   -url string
         The URL where we should start crawling.
+  -urls string
+        A user agent such as (Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0).
   -user-agent string
         A user agent such as (Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0).
   -verbose
