@@ -296,14 +296,14 @@ func main() {
 			return
 		}
 
-		// It's a valid URL as it's on the request item - no error check needed
-		parsedUrl, _ := url.Parse(r.URL.String())
-		parsedUrlDomainContainsRootDomain := StringContains(parsedUrl.Host, rootDomain)
-		if !parsedUrlDomainContainsRootDomain {
-			// Likely a twitter or facebook url - skipping.
-			r.Abort()
-			return
-		}
+		//// It's a valid URL as it's on the request item - no error check needed
+		//parsedUrl, _ := url.Parse(r.URL.String())
+		//parsedUrlDomainContainsRootDomain := StringContains(parsedUrl.Host, rootDomain)
+		//if !parsedUrlDomainContainsRootDomain {
+		//	// Likely a twitter or facebook url - skipping.
+		//	r.Abort()
+		//	return
+		//}
 
 		Logger.Debugf("[Page Collector] Visiting %s", r.URL.String())
 	})
@@ -354,6 +354,12 @@ func main() {
 				return
 			}
 
+			underMaxDepthLimit := e.Request.Depth < pageCollector.MaxDepth
+
+			// If we've hit max depth don't submit any more links.
+			if !underMaxDepthLimit {
+				return
+			}
 			pageCollectorVisitErr := e.Request.Visit(parsedUrl.String())
 
 			if pageCollectorVisitErr != nil {
@@ -442,6 +448,9 @@ func main() {
 
 	// On error execute the callback
 	pageCollector.OnError(func(r *colly.Response, err error) {
+		if r.StatusCode == 0 {
+			Logger.Error(err)
+		}
 		if err.Error() == "remote error: tls: user canceled" {
 			Logger.Debug("[Page Collector ERROR] Assumed Timeout (tls: user canceled)")
 		} else {
@@ -458,7 +467,7 @@ func main() {
 
 	// Before making a request print "Visiting ..."
 	jsCollector.OnRequest(func(r *colly.Request) {
-		Logger.Debugf("[JS Collector] Visiting %s", r.URL.String())
+		Logger.Debugf("[JS Collector] (Depth: %v) Visiting %s", r.Depth, r.URL.String())
 	})
 
 	// On initial response execute the callback
@@ -492,7 +501,9 @@ func main() {
 
 			host := parsedAbsoluteUrl.Host
 			domainMatchesRoot := StringsMatch(host, rootDomain)
-			if !visited && domainMatchesRoot {
+
+			underMaxDepthLimit := r.Request.Depth < pageCollector.MaxDepth
+			if !visited && domainMatchesRoot && underMaxDepthLimit {
 				// Request it with the pageCollector with current response context following convention
 				// http://go-colly.org/docs/best_practices/multi_collector/
 
@@ -500,7 +511,7 @@ func main() {
 				if err2 != nil {
 					// ignore the filter error
 
-					Logger.Errorf("[Page Collector] Failed to visit %s", absoluteURL)
+					Logger.Errorf("[JS Collector] Failed send %s to Page Collector", absoluteURL)
 					Logger.Error(err2.Error())
 					Logger.Error(pageCollector.String())
 
