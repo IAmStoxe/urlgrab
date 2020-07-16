@@ -354,12 +354,12 @@ func main() {
 				return
 			}
 
-			underMaxDepthLimit := e.Request.Depth < pageCollector.MaxDepth
-
-			// If we've hit max depth don't submit any more links.
-			if !underMaxDepthLimit {
-				return
-			}
+			//underMaxDepthLimit := e.Request.Depth <= pageCollector.MaxDepth
+			//
+			//// If we've hit max depth don't submit any more links.
+			//if !underMaxDepthLimit {
+			//	return
+			//}
 			pageCollectorVisitErr := e.Request.Visit(parsedUrl.String())
 
 			if pageCollectorVisitErr != nil {
@@ -368,6 +368,8 @@ func main() {
 					//
 				case "No URLFilters match":
 					//
+				case "Max depth limit reached":
+					Logger.Error("[Page Collector] Max Depth Reached")
 				default:
 					Logger.Errorf("[Page Collector] Failed to visit %s.", urlToVisit)
 					Logger.Error(pageCollectorVisitErr)
@@ -502,8 +504,8 @@ func main() {
 			host := parsedAbsoluteUrl.Host
 			domainMatchesRoot := StringsMatch(host, rootDomain)
 
-			underMaxDepthLimit := r.Request.Depth < pageCollector.MaxDepth
-			if !visited && domainMatchesRoot && underMaxDepthLimit {
+			//underMaxDepthLimit := r.Request.Depth <= pageCollector.MaxDepth
+			if !visited && domainMatchesRoot {
 				// Request it with the pageCollector with current response context following convention
 				// http://go-colly.org/docs/best_practices/multi_collector/
 
