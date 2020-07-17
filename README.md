@@ -78,6 +78,18 @@ Usage of urlgrab:
 
 ```
 
+## Build 
+You can easily build a binary specific to your platform into the `bin` directory with th following command:
+```
+make build
+```
+
+if you want to make binaries for Windows, Linux and MacOS to distribute the CLI, just run this command:
+```
+make cross
+```
+All the binaries will be available in the `dist` directory.
+
 ## Author
 
 👤 **Devin Stokes**
