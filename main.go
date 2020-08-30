@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 	"github.com/hahwul/urlgrab/browser"
-	"github.com/hahwul/urlgrab/utilities"
+	. "github.com/hahwul/urlgrab/utilities"
 )
 
 type DomainInfo struct {
