@@ -17,8 +17,8 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"github.com/hahwul/urlgrab/browser"
-	. "github.com/hahwul/urlgrab/utilities"
+	"github.com/IAmStoxe/urlgrab/browser"
+	. "github.com/IAmStoxe/urlgrab/utilities"
 )
 
 type DomainInfo struct {
