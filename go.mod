@@ -1,4 +1,4 @@
-module github.com/hahwul/urlgrab
+module hahwul/urlgrab
 
 go 1.14
 
