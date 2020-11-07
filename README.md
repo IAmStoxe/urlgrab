@@ -79,7 +79,7 @@ Usage of urlgrab:
 ```
 
 ## Build 
-You can easily build a binary specific to your platform into the `bin` directory with th following command:
+You can easily build a binary specific to your platform into the `bin` directory with the following command:
 ```
 make build
 ```
